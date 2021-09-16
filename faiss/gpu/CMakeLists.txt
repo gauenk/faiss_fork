@@ -9,6 +9,9 @@ set(FAISS_GPU_SRC
   GpuCloner.cpp
   GpuClonerOptions.cpp
   GpuDistance.cu
+  GpuNnfDistance.cu
+  GpuPizzaDistance.cu
+  GpuDistancePizza.cu
   GpuIndex.cu
   GpuIndexBinaryFlat.cu
   GpuIndexFlat.cu
@@ -22,6 +25,7 @@ set(FAISS_GPU_SRC
   impl/BinaryFlatIndex.cu
   impl/BroadcastSum.cu
   impl/Distance.cu
+  impl/ImagePatchDistance.cu
   impl/FlatIndex.cu
   impl/IVFAppend.cu
   impl/IVFBase.cu
@@ -33,6 +37,7 @@ set(FAISS_GPU_SRC
   impl/IVFUtilsSelect1.cu
   impl/IVFUtilsSelect2.cu
   impl/InterleavedCodes.cpp
+  impl/NnfL2Norm.cu
   impl/L2Norm.cu
   impl/L2Select.cu
   impl/PQScanMultiPassPrecomputed.cu
@@ -80,6 +85,10 @@ set(FAISS_GPU_HEADERS
   GpuCloner.h
   GpuClonerOptions.h
   GpuDistance.h
+  GpuNnfDistance.h
+  GpuPizzaDistance.h
+  GpuDistancePizza.h
+  GpuDistanceDataType.h
   GpuFaissAssert.h
   GpuIndex.h
   GpuIndexBinaryFlat.h
@@ -95,6 +104,7 @@ set(FAISS_GPU_HEADERS
   impl/BinaryFlatIndex.cuh
   impl/BroadcastSum.cuh
   impl/Distance.cuh
+  impl/ImagePatchDistance.cuh
   impl/DistanceUtils.cuh
   impl/FlatIndex.cuh
   impl/GeneralDistance.cuh
@@ -107,6 +117,7 @@ set(FAISS_GPU_HEADERS
   impl/IVFPQ.cuh
   impl/IVFUtils.cuh
   impl/InterleavedCodes.h
+  impl/NnfL2Norm.cuh
   impl/L2Norm.cuh
   impl/L2Select.cuh
   impl/PQCodeDistances-inl.cuh

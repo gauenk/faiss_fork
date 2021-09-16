@@ -264,16 +264,23 @@ bool StandardGpuResourcesImpl::isInitialized(int device) const {
 }
 
 void StandardGpuResourcesImpl::initializeForDevice(int device) {
+    // std::cout << "about to isinitilalized." << std::endl;
     if (isInitialized(device)) {
         return;
     }
+    // std::cout << "done isinit. " << std::endl;
+    // std::cout << "pinnedMemAlloc__ " << pinnedMemAlloc_ << std::endl;
+    // std::cout << "pinnedMemSize_ " << pinnedMemSize_ << std::endl;
+    // std::cout << "cudaHostAllocDefault " << cudaHostAllocDefault << std::endl;
 
     // If this is the first device that we're initializing, create our
     // pinned memory allocation
     if (defaultStreams_.empty() && pinnedMemSize_ > 0) {
+        // std::cout << "about to cudahostalloc. " << std::endl;
         auto err = cudaHostAlloc(
                 &pinnedMemAlloc_, pinnedMemSize_, cudaHostAllocDefault);
 
+        // std::cout << "finised. " << std::endl;
         FAISS_THROW_IF_NOT_FMT(
                 err == cudaSuccess,
                 "failed to cudaHostAlloc %zu bytes for CPU <-> GPU "
@@ -306,6 +313,7 @@ void StandardGpuResourcesImpl::initializeForDevice(int device) {
             "Device id %d does not have expected warpSize of 32",
             device);
 
+    std::cout << "streams!." << std::endl;
     // Create streams
     cudaStream_t defaultStream = 0;
     CUDA_VERIFY(
@@ -329,6 +337,7 @@ void StandardGpuResourcesImpl::initializeForDevice(int device) {
 
     alternateStreams_[device] = std::move(deviceStreams);
 
+    // std::cout << "cuBLAS!." << std::endl;
     // Create cuBLAS handle
     cublasHandle_t blasHandle = 0;
     auto blasStatus = cublasCreate(&blasHandle);
@@ -363,14 +372,18 @@ cublasHandle_t StandardGpuResourcesImpl::getBlasHandle(int device) {
 }
 
 cudaStream_t StandardGpuResourcesImpl::getDefaultStream(int device) {
+    // std::cout << "get Default Stream." << std::endl;
     initializeForDevice(device);
+    // std::cout << "init." << std::endl;
 
     auto it = userDefaultStreams_.find(device);
+    // std::cout << "user default ." << std::endl;
     if (it != userDefaultStreams_.end()) {
         // There is a user override stream set
         return it->second;
     }
 
+    // std::cout << "pre return ." << std::endl;
     // Otherwise, our base default stream
     return defaultStreams_[device];
 }

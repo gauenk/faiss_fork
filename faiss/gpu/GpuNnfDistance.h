@@ -14,37 +14,39 @@ namespace faiss {
 namespace gpu {
 
   // Scalar type of the vector data
-  enum class DistanceDataType {
+  enum class DistanceDataTypeNnf {
     F32 = 1,
       F16,
       };
 
   // Scalar type of the indices data
-  enum class IndicesDataType {
+  enum class IndicesDataTypeNnf {
     I64 = 1,
       I32,
       };
 
 /// Arguments to brute-force GPU k-nearest neighbor searching
-struct GpuDistanceParams {
-    GpuDistanceParams()
+struct GpuNnfDistanceParams {
+    GpuNnfDistanceParams()
             : metric(faiss::MetricType::METRIC_L2),
               metricArg(0),
               k(0),
-              dims(0),
-              vectors(nullptr),
-              vectorType(DistanceDataType::F32),
-              vectorsRowMajor(true),
-              numVectors(0),
-              vectorNorms(nullptr),
-              queries(nullptr),
-              queryType(DistanceDataType::F32),
-              queriesRowMajor(true),
-              numQueries(0),
+              h(0),
+              w(0),
+              c(0),
+              ps(0),
+              nblocks(0),
+              dType(DistanceDataTypeNnf::F32),
+              targetImg(nullptr),
+              targetImgType(DistanceDataTypeNnf::F32),
+              refImg(nullptr),
+              refImgType(DistanceDataTypeNnf::F32),
+              refPatchNorms(nullptr),
               outDistances(nullptr),
               ignoreOutDistances(false),
-              outIndicesType(IndicesDataType::I64),
+              outIndicesType(IndicesDataTypeNnf::I64),
               outIndices(nullptr) {}
+
 
     //
     // Search parameters
@@ -62,8 +64,13 @@ struct GpuDistanceParams {
     /// without top-k filtering
     int k;
 
-    /// Vector dimensionality
-    int dims;
+    /// image dims
+    int h; // height
+    int w; // width
+    int c; // color
+    int ps; // patchsize radius on one direction
+    int nblocks; // number of blocks to search in one direction
+    DistanceDataTypeNnf dType;// data type of pixels
 
     //
     // Vectors being queried
@@ -72,14 +79,8 @@ struct GpuDistanceParams {
     /// If vectorsRowMajor is true, this is
     /// numVectors x dims, with dims innermost; otherwise,
     /// dims x numVectors, with numVectors innermost
-    const void* vectors;
-    DistanceDataType vectorType;
-    bool vectorsRowMajor;
-    int numVectors;
-
-    /// Precomputed L2 norms for each vector in `vectors`, which can be
-    /// optionally provided in advance to speed computation for METRIC_L2
-    const float* vectorNorms;
+    const void* targetImg;
+    DistanceDataTypeNnf targetImgType;
 
     //
     // The query vectors (i.e., find k-nearest neighbors in `vectors` for each
@@ -89,10 +90,12 @@ struct GpuDistanceParams {
     /// If queriesRowMajor is true, this is
     /// numQueries x dims, with dims innermost; otherwise,
     /// dims x numQueries, with numQueries innermost
-    const void* queries;
-    DistanceDataType queryType;
-    bool queriesRowMajor;
-    int numQueries;
+    const void* refImg;
+    DistanceDataTypeNnf refImgType;
+
+    /// Precomputed L2 norms for each vector in `vectors`, which can be
+    /// optionally provided in advance to speed computation for METRIC_L2
+    const float* refPatchNorms;
 
     //
     // Output results
@@ -109,7 +112,7 @@ struct GpuDistanceParams {
 
     /// A region of memory size numQueries x k, with k
     /// innermost (row major). Not used if k == -1 (all pairwise distances)
-    IndicesDataType outIndicesType;
+    IndicesDataTypeNnf outIndicesType;
     void* outIndices;
 };
 
@@ -126,32 +129,7 @@ struct GpuDistanceParams {
 /// For each vector in `queries`, searches all of `vectors` to find its k
 /// nearest neighbors with respect to the given metric
 
-void bfKnn(GpuResourcesProvider* resources, const GpuDistanceParams& args);
+void bfNnf(GpuResourcesProvider* resources, const GpuNnfDistanceParams& args);
 
-// /// Deprecated legacy implementation
-// void bruteForceKnn(
-//         GpuResourcesProvider* resources,
-//         faiss::MetricType metric,
-//         // If vectorsRowMajor is true, this is
-//         // numVectors x dims, with dims innermost; otherwise,
-//         // dims x numVectors, with numVectors innermost
-//         const float* vectors,
-//         bool vectorsRowMajor,
-//         int numVectors,
-//         // If queriesRowMajor is true, this is
-//         // numQueries x dims, with dims innermost; otherwise,
-//         // dims x numQueries, with numQueries innermost
-//         const float* queries,
-//         bool queriesRowMajor,
-//         int numQueries,
-//         int dims,
-//         int k,
-//         // A region of memory size numQueries x k, with k
-//         // innermost (row major)
-//         float* outDistances,
-//         // A region of memory size numQueries x k, with k
-//         // innermost (row major)
-//         Index::idx_t* outIndices);
-
-} // namespace gpu
-} // namespace faiss
+}
+}

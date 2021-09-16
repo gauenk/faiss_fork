@@ -987,9 +987,13 @@ def knn_gpu(res, xq, xb, k, D=None, I=None, metric=METRIC_L2):
 
     # no stream synchronization needed, inputs and outputs are guaranteed to
     # be on the CPU (numpy arrays)
-    bfKnn(res, args)
+    bfKnnPizza(res, args)
 
     return D, I
+
+def run_nnf():
+    print("Heeeey")
+    return 
 
 # allows numpy ndarray usage with bfKnn for all pairwise distances
 def pairwise_distance_gpu(res, xq, xb, D=None, metric=METRIC_L2):
@@ -1078,7 +1082,8 @@ def pairwise_distance_gpu(res, xq, xb, D=None, metric=METRIC_L2):
 
     # no stream synchronization needed, inputs and outputs are guaranteed to
     # be on the CPU (numpy arrays)
-    bfKnn(res, args)
+    bfKnnPizza(res, args)
+    foobar()
 
     return D
 
