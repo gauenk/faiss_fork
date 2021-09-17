@@ -33,12 +33,12 @@ namespace faiss {
       //         args.numQueries > 0, "bfNnf: numQueries must be > 0");
       // FAISS_THROW_IF_NOT_MSG(
       //         args.queries, "bfNnf: queries must be provided (passed null)");
-      // FAISS_THROW_IF_NOT_MSG(
-      //         args.outDistances,
-      //         "bfNnf: outDistances must be provided (passed null)");
-      // FAISS_THROW_IF_NOT_MSG(
-      //         args.outIndices || args.k == -1,
-      //         "bfNnf: outIndices must be provided (passed null)");
+      FAISS_THROW_IF_NOT_MSG(
+              args.outDistances,
+              "bfNnf: outDistances must be provided (passed null)");
+      FAISS_THROW_IF_NOT_MSG(
+              args.outIndices || args.k == -1,
+              "bfNnf: outIndices must be provided (passed null)");
 
       // Don't let the resources go out of scope
       // std::cout << "about to get res" << std::endl;
@@ -63,14 +63,21 @@ namespace faiss {
 					    const_cast<T*>(reinterpret_cast<const T*>
 							   (args.refImg)),
 					    stream,
-					    {args.c,args.h,args.w});
+					    {args.c,args.h+2*pad,args.w+2*pad});
+      auto blockLabels = toDeviceTemporary<int, 2>(
+					    res,
+					    device,
+					    args.blockLabels,
+					    stream,
+					    {args.nblocks*args.nblocks,2});
 
       DeviceTensor<float, 2, true> refPatchNorms;
       if (args.refPatchNorms) {
         refPatchNorms = toDeviceTemporary<float, 2>(
 						    res,
 						    device,
-						    const_cast<float*>(args.refPatchNorms),
+						    const_cast<float*>
+						    (args.refPatchNorms),
 						    stream,
 						    {args.h,args.w});
       }
@@ -100,6 +107,7 @@ namespace faiss {
 		targetImg,
 		refImg,
                 args.refPatchNorms ? &refPatchNorms : nullptr,
+		blockLabels,
                 args.k,
 		args.h,
 		args.w,
@@ -149,6 +157,7 @@ namespace faiss {
 		targetImg,
 		refImg,
                 args.refPatchNorms ? &refPatchNorms : nullptr,
+		blockLabels,
                 args.k,
                 args.h,
                 args.w,

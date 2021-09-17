@@ -21,6 +21,9 @@
 namespace faiss {
 namespace gpu {
 
+#define macro_min(a, b) (a > b)? b: a
+#define macro_max(a, b) (a > b)? a: b 
+
 // Input: (batch x dim)
 // Output: (batch norm)
 // Done under the presumption that the dimension size is not too large
@@ -50,78 +53,135 @@ __global__ void nnfl2NormRowMajor(
     extern __shared__ char smemByte[]; // #warps * RowTileSize * ColTileSize * BlockTileSize elements
     float* smem = (float*)smemByte;
 
-    IndexType numWarps = utils::divUp(blockDim.x*blockDim.y*blockDim.z, kWarpSize);
-    IndexType threadId = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.y * blockDim.x;
-    IndexType tidx = threadId;
+    // get the cuda vars 
+    IndexType numWarps = utils::divUp(blockDim.x, kWarpSize);
+    IndexType threadId = threadIdx.x;
     IndexType warpId = threadId / kWarpSize;
     IndexType laneId = warpId % kWarpSize;
 
+    // where do we start the batch within our "thread"
+    IndexType numRowTiles = vals.getSize(0) / RowTileSize;
+    IndexType numColTiles = vals.getSize(1) / ColTileSize;
+    IndexType numBlockTiles = blocks.getSize(0) / BlockTileSize;
+    // IndexType pixTileSize = RowTileSize*ColTileSize;
 
-    bool lastRowTile = (blockIdx.x == (gridDim.x - 1));
-    bool lastColTile = (blockIdx.y == (gridDim.y - 1));
-    bool lastBlockTile = (blockIdx.z == (gridDim.z - 1));
-    // This is the "blockIdx" gives us enough of these so this should be okay.
-    IndexType rowStart = RowTileSize * blockIdx.x;
-    IndexType colStart = ColTileSize * blockIdx.y;
-    IndexType blockStart = BlockTileSize * blockIdx.z;
+    // blockIdx.x and blockDim.x and vals.getSize(?)
+    IndexType numPixTiles = numRowTiles * numColTiles;
+    // IndexType rowStart = RowTileSize*(blockIdx.x % numRowTiles);
+    // IndexType colStart = ColTileSize*((blockIdx.x / numRowTiles) % numColTiles);
+    // IndexType blockStart = BlockTileSize*((blockIdx.x / (numPixTiles) % numBlockTiles));
+    IndexType rowStart = RowTileSize*(blockIdx.x);
+    IndexType colStart = ColTileSize*(blockIdx.y);
+    IndexType blockStart = BlockTileSize*(blockIdx.z);
 
-    int counter = 0; // counter to specify index within (patchsize)^2 * nftrs
+    // determine if our batchsize is too big for the location;
+    // the batchsize at compile time might not be a multiple of batchsize at compute time.
+    bool lastRowTile = (rowStart + RowTileSize - 1) >= vals.getSize(0);
+    bool lastColTile = (colStart + ColTileSize - 1) >= vals.getSize(1);
+    bool lastBlockTile = (blockStart + BlockTileSize - 1) >= blocks.getSize(0);
+    // bool lastTile = lastBlockTile || lastRowTile || lastColTile;
+    bool lastTile = lastBlockTile || lastRowTile || lastColTile;
+
+    // variables needed to use our weird access pattern
     int nftrs = ref.getSize(0);
     int ps2 = patchsize*patchsize;
-    int pad = utils::divDown(ps2,2);
+    float nmlz = 1./(nftrs*ps2);
+    int pad = patchsize / 2;//utils::divDown(patchsize,2);
     IndexType blockIndex = threadId % blocks.getSize(0);
     IndexType ftrIndex = utils::divDown(threadId,blocks.getSize(0));
 
     // accumulate in f32
     float pixNorm[RowTileSize][ColTileSize][BlockTileSize];
 
-    if (lastRowTile || lastColTile || lastBlockTile) {
+    if (lastTile) { // our batchsizes are too big since we've run out of samples
         // We are handling the very end of the input matrix rows
-        for (IndexType row = 0; row < ref.getSize(1) - rowStart; ++row) {
-	  for (IndexType col = 0; col < ref.getSize(2) - colStart; ++col) {
-	    for (IndexType blk = 0; col < blocks.getSize(0) - blockStart; ++blk) {
+        // printf(" pre loop \n");
+	IndexType numRowIters = vals.getSize(0) - rowStart;
+	numRowIters = macro_min(RowTileSize,(int)numRowIters);
+	IndexType numColIters = vals.getSize(1) - colStart;
+	numColIters = macro_min(ColTileSize,(int)numColIters);
+	IndexType numBlockIters = blocks.getSize(0)-blockStart;
+	numBlockIters = macro_min(BlockTileSize,(int)numBlockIters);
+
+        for (IndexType row = 0; row < numRowIters; ++row) {
+	  for (IndexType col = 0; col < numColIters; ++col) {
+	    for (IndexType blk = 0; blk < numBlockIters; ++blk) {
+	      IndexType tRowStart = blocks[blockStart+blk][0]+rowStart;
+	      IndexType tColStart = blocks[blockStart+blk][1]+colStart;
+
 	      if (NormLoop) {
-		IndexType tRowStart = blocks[blockStart+blk][0]-pad+rowStart;
-		IndexType tColStart = blocks[blockStart+blk][1]-pad+colStart;
 		pixNorm[0][0][0] = 0;
 
 		for (IndexType txIndex = threadIdx.x;
 		     txIndex < ref.getSize(0);
 		     txIndex += blockDim.x) {
 
-		  IndexType cmod = counter % ps2;
-		  IndexType hIdx = cmod / patchsize;
-		  IndexType wIdx = cmod % patchsize;
-		  IndexType ftr = counter / ps2;
+		  IndexType ftr = txIndex % nftrs;
+		  IndexType cmod = txIndex / nftrs;
+		  IndexType hIdx = (cmod / patchsize);
+		  IndexType wIdx = (cmod % patchsize);
+
 		  IndexType targetRow = tRowStart + row + hIdx;
 		  IndexType targetCol = tColStart + col + wIdx;
+		  IndexType refRow = rowStart + pad + row + hIdx;
+		  IndexType refCol = colStart + pad + col + wIdx;
 
 		  TVec target_val = target[ftr][targetRow][targetCol];
-		  TVec ref_val = ref[ftr][rowStart + row][colStart + col];
+		  TVec ref_val = ref[ftr][refRow][refCol];
 		  TVec delta_val = Math<TVec>::sub(ref_val,target_val);
 
 		  delta_val = Math<TVec>::mul(delta_val,delta_val);
 		  pixNorm[0][0][0] = pixNorm[0][0][0] + Math<TVec>::reduceAdd(delta_val);
 
-		  counter += 1;
 		}
 	      } else {
-		TVec ref_val = ref[tidx][rowStart + row][colStart + col];
-		TVec target_val = target[tidx][tRowStart + row][tColStart + col];
+
+
+		IndexType ftr = threadId % nftrs;
+		IndexType cmod = threadId / nftrs;
+		IndexType hIdx = (cmod / patchsize);
+		IndexType wIdx = (cmod % patchsize);
+
+		IndexType targetRow = tRowStart + row + hIdx;
+		IndexType targetCol = tColStart + col + wIdx;
+		IndexType refRow = rowStart + pad + row + hIdx;
+		IndexType refCol = colStart + pad + col + wIdx;
+
+		TVec target_val = target[ftr][targetRow][targetCol];
+		TVec ref_val = ref[ftr][refRow][refCol];
 		TVec delta_val = Math<TVec>::sub(ref_val,target_val);
+
 		delta_val = Math<TVec>::mul(delta_val,delta_val);
 		pixNorm[0][0][0] = Math<TVec>::reduceAdd(delta_val);
 	      }
 
 	      pixNorm[0][0][0] = warpReduceAllSum(pixNorm[0][0][0]);
 	      if (laneId == 0) {
-		smem[0]=pixNorm[0];
-		//smem[row * ColTileSize * numWarps + col * numWarps + warpId]=pixNorm[0];
+		// IndexType smemRowIdx = row;
+		// IndexType smemColIdx = col * numRowIters;
+		// IndexType smemBlockIdx = blk * numRowIters * numColIters;
+		// IndexType smemBatchIdx = smemBlockIdx + smemRowIdx + smemColIdx;
+		// IndexType smemIdx = smemBatchIdx * numWarps + warpId;
+
+		IndexType smemRowIdx = row;
+		IndexType smemColIdx = col * RowTileSize;
+		IndexType smemBlockIdx = blk * ColTileSize * RowTileSize;
+		IndexType smemBatchIdx = smemBlockIdx + smemRowIdx + smemColIdx;
+		IndexType smemIdx = smemBatchIdx * numWarps + warpId;
+
+		// IndexType smemRowIdx = row;
+		// IndexType smemColIdx = col * numRowIters;
+		// IndexType smemBlockIdx = blk * numRowIters * numColIters;
+		// IndexType smemBatchIdx = smemBlockIdx + smemRowIdx + smemColIdx;
+		// IndexType smemIdx = smemBatchIdx * numWarps + warpId;
+		smem[smemIdx]=pixNorm[0][0][0];
+		// smem[0]=pixNorm[0][0][0];
 	      }
 	    }
 	  }
 	}
-    } else {
+    }
+     else {
         // We are guaranteed that all RowTileSize rows are available in
         // [rowStart, rowStart + RowTileSize)
 
@@ -141,21 +201,30 @@ __global__ void nnfl2NormRowMajor(
 	      }
 	    }
 
-            for (IndexType stratX = threadIdx.x; stratX < ps2*nftrs;
-                 stratX += blockDim.x) {
+            for (IndexType txIndex = threadIdx.x; txIndex < ps2*nftrs;
+                 txIndex += blockDim.x) {
 #pragma unroll
 	      for (int row = 0; row < RowTileSize; ++row) {
 #pragma unroll
 		for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 		  for (int blk = 0; blk < BlockTileSize; ++blk) {
-		    IndexType ftr = stratX % nftrs;
-		    IndexType tIdxH = utils::divUp(stratX,nftrs);
 
-		    IndexType tRowStart = blocks[blockStart+blk][0]-pad+rowStart;
-		    IndexType tColStart = blocks[blockStart+blk][1]-pad+colStart;
-		    TVec ref_val = ref[ftr][rowStart + row][colStart + col];
-		    TVec target_val = target[ftr][tRowStart + row][tColStart + col];
+		    IndexType tRowStart = blocks[blockStart+blk][0]+rowStart;
+		    IndexType tColStart = blocks[blockStart+blk][1]+colStart;
+
+		    IndexType ftr = txIndex % nftrs;
+		    IndexType cmod = txIndex / nftrs;
+		    IndexType hIdx = cmod / patchsize;
+		    IndexType wIdx = cmod % patchsize;
+
+		    IndexType targetRow = tRowStart + row + hIdx;
+		    IndexType targetCol = tColStart + col + wIdx;
+		    IndexType refRow = rowStart + pad + row + hIdx;
+		    IndexType refCol = colStart + pad + col + wIdx;
+
+		    TVec target_val = target[ftr][targetRow][targetCol];
+		    TVec ref_val = ref[ftr][refRow][refCol];
                     tmp[row][col][blk] = Math<TVec>::sub(ref_val,target_val);
 		  }
 		}
@@ -194,9 +263,24 @@ __global__ void nnfl2NormRowMajor(
 	      for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 		for (int blk = 0; blk < BlockTileSize; ++blk) {
-		    TVec ref_val = ref[ftr][rowStart + row][colStart + col];
-		    TVec target_val = target[ftr][tRowStart + row][tColStart + col];
-		    tmp[row][col][blk] = Math<TVec>::sub(ref_val,target_val);
+
+		  IndexType tRowStart = blocks[blockStart+blk][0]+rowStart;
+		  IndexType tColStart = blocks[blockStart+blk][1]+colStart;
+
+		  IndexType ftr = threadId % nftrs;
+		  IndexType cmod = threadId / nftrs;
+		  IndexType hIdx = cmod / patchsize;
+		  IndexType wIdx = cmod % patchsize;
+
+		  IndexType targetRow = tRowStart + row + hIdx;
+		  IndexType targetCol = tColStart + col + wIdx;
+		  IndexType refRow = rowStart + pad + row + hIdx;
+		  IndexType refCol = colStart + pad + col + wIdx;
+
+		  TVec target_val = target[ftr][targetRow][targetCol];
+		  TVec ref_val = ref[ftr][refRow][refCol];
+
+		  tmp[row][col][blk] = Math<TVec>::sub(ref_val,target_val);
 		}
 	      }
             }
@@ -243,17 +327,25 @@ __global__ void nnfl2NormRowMajor(
 	    for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 	      for (int blk = 0; blk < BlockTileSize; ++blk) {
-		smem[0] = pixNorm[row][col][blk];
-		//smem[row * ColTileSize * numWarps + col * numWarps + warpId] = pixNorm[row*ColTileSize+col];
+		IndexType smemRowIdx = row;
+		IndexType smemColIdx = col * RowTileSize;
+		IndexType smemBlockIdx = blk * ColTileSize * RowTileSize;
+		IndexType smemBatchIdx = smemBlockIdx + smemRowIdx + smemColIdx;
+		IndexType smemIdx = smemBatchIdx * numWarps + laneId;
+		smem[smemIdx] = pixNorm[row][col][blk];
 	      }
 	    }
 	  }
         }
-    }
+     }
 
+    // printf(" pre sync threads \n");
     __syncthreads();
+    // printf(" post sync threads \n");
 
     // Sum across warps
+    // Replace "warpId" with "laneId" so a single Warp (the first one)
+    // can read back the elements into the local memory.
     if (warpId == 0) {
 #pragma unroll
       for (int row = 0; row < RowTileSize; ++row) {
@@ -261,9 +353,12 @@ __global__ void nnfl2NormRowMajor(
 	for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 	  for (int blk = 0; blk < BlockTileSize; ++blk) {
-	    pixNorm[row][col][blk] = laneId < numWarps ? smem[0] : 0;
-	    // pixNorm[row*ColTileSize+col] =
-	    //   laneId < numWarps ? smem[row * ColTileSize * numWarps + col * numWarps + warpId] : 0;
+	    IndexType smemRowIdx = row;
+	    IndexType smemColIdx = col * RowTileSize;
+	    IndexType smemBlockIdx = blk * ColTileSize * RowTileSize;
+	    IndexType smemBatchIdx = smemBlockIdx + smemRowIdx + smemColIdx;
+	    IndexType smemIdx = smemBatchIdx * numWarps + laneId;
+	    pixNorm[row][col][blk] = laneId < numWarps ? smem[smemIdx] : 0;
 	  }
         }
       }
@@ -290,16 +385,16 @@ __global__ void nnfl2NormRowMajor(
 #pragma unroll
 	    for (int blk = 0; blk < BlockTileSize; ++blk) {
 	      int outBlock = blockStart + blk;
-	      if (lastRowTile || lastColTile || lastBlockTile) {
-		if (outRow < vals.getSize(0) && outCol < vals.getSize(1)) {
+	      if (lastTile) {
+		if (outRow < vals.getSize(0) && outCol < vals.getSize(1) && outBlock < vals.getSize(2)) {
 		  vals[outRow][outCol][outBlock] = NormSquared ?
-		    ConvertTo<float>::to(pixNorm[row][col][blk])
-		    : sqrtf(ConvertTo<float>::to(pixNorm[row][col][blk]));
+		    nmlz*ConvertTo<float>::to(pixNorm[row][col][blk])
+		    : sqrtf(nmlz*ConvertTo<float>::to(pixNorm[row][col][blk]));
 		}
 	      } else {
-		vals[outRow][outCol][0] = NormSquared
-		  ? ConvertTo<float>::to(pixNorm[row][col][blk])
-		  : sqrtf(ConvertTo<float>::to(pixNorm[row][col][blk]));
+		vals[outRow][outCol][outBlock] = NormSquared
+		  ? nmlz*ConvertTo<float>::to(pixNorm[row][col][blk])
+		  : sqrtf(nmlz*ConvertTo<float>::to(pixNorm[row][col][blk]));
 	      }
 	    }
 	  }
@@ -377,42 +472,53 @@ void runNnfL2Norm(
 
     // compute numThreads
     int nftrs = ref.getSize(0);
-    int numBlocksBatch = blocks.getSize(0);
-    int numBlocksX = (int)std::floor(std::sqrt(numBlocksBatch*1.0));
-    int numBlocksY = utils::divUp(numBlocksBatch,numBlocksX);
-    int dim = patchsize*patchsize*nftrs;
-    // auto dim = patchsize*patchsize;
-    int cubeRootMaxThreads = (int)utils::pow(maxThreads*1.0,.33);
-    bool normLoop = dim > cubeRootMaxThreads;
-    int numThreads = std::min(dim, cubeRootMaxThreads);
-    int nWarps = utils::divUp(numThreads, kWarpSize);
+    IndexType dim = patchsize*patchsize*nftrs;
+    bool normLoop = dim > maxThreads;
+    IndexType numThreads = std::min(dim, maxThreads);
+
+    // compute number of Warps per kernel with size "numThreads"
+    IndexType nWarps = utils::divUp(numThreads, kWarpSize);
+
+    // compute number of Grids
+    int pad = std::floor(patchsize/2);
+    int height = vals.getSize(0);
+    int width = vals.getSize(1);
+    int blockBatchSize = blocks.getSize(0);
+    int numToComp = height * width * blockBatchSize;
+    int numToCompPerKernel = rowTileSize * colTileSize * blockTileSize;
+    int numHeightBlocks = utils::divUp(height,rowTileSize);
+    int numWidthBlocks = utils::divUp(width, colTileSize);
+    int numBlockBlocks = utils::divUp(blockBatchSize,blockTileSize);
+    int nBlocks = utils::divUp(numToComp,numToCompPerKernel);
+    std::cout << "numToComp " << numToComp << std::endl;
+    std::cout << "numToCompPerKernel " << numToCompPerKernel << std::endl;
+    std::cout << "nBlocks " << nBlocks << std::endl;
+    std::cout << "blockBatchSize " << blockBatchSize << std::endl;
+
+    std::cout << "numHeightBlocks " << numHeightBlocks << std::endl;
+    std::cout << "numWidthBlocks " << numWidthBlocks << std::endl;
+    std::cout << "numBlockBlocks " << numBlockBlocks << std::endl;
 
     if (ref_can_recast && target_can_recast) {
         // Can load using the vectorized type
         auto refV = ref.template castResize<TVec>();
         auto targetV = target.template castResize<TVec>();
 
-	auto gridx = utils::divUp(refV.getSize(1), rowTileSize);
-	auto gridy = utils::divUp(refV.getSize(2), colTileSize);
-	auto gridz = utils::divUp(blocks.getSize(0), blockTileSize);
+        // auto grid = dim3(nBlocks);
+        auto grid = dim3(numHeightBlocks,numWidthBlocks,numBlockBlocks);
+        auto block = dim3(numThreads);
 
-        auto grid = dim3(gridx,gridy,gridz);
-        auto block = dim3(numThreads,numThreads,numThreads);
-
-        auto smem = sizeof(float) * rowTileSize * colTileSize * blockTileSize * nWarps;
+        auto smem = sizeof(float) * numToCompPerKernel * nWarps;
 
         RUN_NNF_L2_ROW_MAJOR(T, TVec, refV, targetV);
     } else {
         // Can't load using the vectorized type
 
-	auto gridx = utils::divUp(refV.getSize(1), rowTileSize);
-	auto gridy = utils::divUp(refV.getSize(2), colTileSize);
-	auto gridz = utils::divUp(blocks.getSize(0), blockTileSize);
+        // auto grid = dim3(nBlocks);
+        auto grid = dim3(numHeightBlocks,numWidthBlocks,numBlockBlocks);
+        auto block = dim3(numThreads);
 
-        auto grid = dim3(gridx,gridy,gridz);
-        auto block = dim3(numThreads,numThreads,numThreads);
-
-        auto smem = sizeof(float) * rowTileSize * colTileSize * blockTileSize * nWarps;
+        auto smem = sizeof(float) * numToCompPerKernel * nWarps;
 
         RUN_NNF_L2_ROW_MAJOR(T, T, ref, target);
     }

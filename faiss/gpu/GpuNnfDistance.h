@@ -42,6 +42,7 @@ struct GpuNnfDistanceParams {
               refImg(nullptr),
               refImgType(DistanceDataTypeNnf::F32),
               refPatchNorms(nullptr),
+	      blockLabels(nullptr),
               outDistances(nullptr),
               ignoreOutDistances(false),
               outIndicesType(IndicesDataTypeNnf::I64),
@@ -96,6 +97,10 @@ struct GpuNnfDistanceParams {
     /// Precomputed L2 norms for each vector in `vectors`, which can be
     /// optionally provided in advance to speed computation for METRIC_L2
     const float* refPatchNorms;
+
+    /// Block labels used to indexing inside of cuda kerenl. Yes, we could have
+    /// just done this in c++ but python is much simpler
+    int* blockLabels;
 
     //
     // Output results

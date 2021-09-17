@@ -39,6 +39,7 @@ void runImagePatchDistance(
         Tensor<T, 3, true>& targetImg,
         Tensor<T, 3, true>& refImg,
         Tensor<float, 2, true>* refPatchNorms,
+        Tensor<int, 2, true> blockLabels,
         int k,
         int h,
         int w,
@@ -51,23 +52,45 @@ void runImagePatchDistance(
 
     std::cout << "hey yo!." << std::endl;
     // Size of proposed image 
-    auto nftrs = refImg.getSize(0);
-    auto height = refImg.getSize(1);
-    auto width = refImg.getSize(2);
+    auto nftrsRef = refImg.getSize(0);
+    auto heightPadRef = refImg.getSize(1);
+    auto widthPadRef = refImg.getSize(2);
     // auto npix = height * width;
-    fprintf(stdout,"height: %d | width: %d | nftrs: %d\n",height,width,nftrs);
+    fprintf(stdout,"nftrs: %d | height: %d | width: %d\n",
+	    nftrsRef,heightPadRef,widthPadRef);
+    auto nftrs = refImg.getSize(0);
     auto pad = std::floor(patchsize/2);
 
     // Size of reference image
-    auto t_nftrs = targetImg.getSize(0);
-    auto heightPad = targetImg.getSize(1);
-    auto widthPad = targetImg.getSize(2);
-    fprintf(stdout,"height: %d | width: %d | nftrs: %d\n",heightPad,widthPad,nftrs);
+    auto nftrsTgt = targetImg.getSize(0);
+    auto heightPadTgt = targetImg.getSize(1);
+    auto widthPadTgt = targetImg.getSize(2);
+    fprintf(stdout,"height: %d | width: %d | nftrs: %d\n",
+	    heightPadTgt,widthPadTgt,nftrsTgt);
+
+    // Size of vals image
+    auto height = outDistances.getSize(0);
+    auto width = outDistances.getSize(1);
+    auto kOut = outDistances.getSize(2);
+
+    // Size of indices image
+    auto heightInd = outIndices.getSize(0);
+    auto widthInd = outIndices.getSize(1);
+    auto kOutInd = outIndices.getSize(2);
+    auto two = outIndices.getSize(3);
     
     // Assert same size
-    FAISS_ASSERT(nftrs == t_nftrs);
-    FAISS_ASSERT(height == heightPad-2*pad);
-    FAISS_ASSERT(width == widthPad-2*pad);
+    FAISS_ASSERT(nftrsRef == nftrsTgt);
+    FAISS_ASSERT(heightPadRef == heightPadTgt);
+    FAISS_ASSERT(widthPadRef == widthPadTgt);
+    FAISS_ASSERT(height == (heightPadRef-2*pad));
+    FAISS_ASSERT(width == (widthPadRef-2*pad));
+    FAISS_ASSERT(width == (widthPadRef-2*pad));
+    FAISS_ASSERT(height == heightInd);
+    FAISS_ASSERT(width == widthInd);
+    FAISS_ASSERT(kOut == k);
+    FAISS_ASSERT(kOutInd == k);
+    FAISS_ASSERT(two == 2);
       
     // The dimensions of the vectors to consider // height, width, k,two
     FAISS_ASSERT(outDistances.getSize(0) == height);
@@ -133,7 +156,8 @@ void runImagePatchDistance(
 		   tileBlocks);
     int numHeightTiles = utils::divUp(height, tileHeight);
     int numWidthTiles = utils::divUp(width, tileWidth);
-    int numBlockTiles = utils::divUp(width, tileBlocks);
+    tileBlocks = k;
+    int numBlockTiles = utils::divUp(nblocks*nblocks, tileBlocks);
     fprintf(stdout,"numHeightTiles: %d | numWidthTiles: %d | numBlockTiles: %d\n",
 	    numHeightTiles,numWidthTiles,numBlockTiles);
 
@@ -150,17 +174,21 @@ void runImagePatchDistance(
     	res,
     	makeTempAlloc(AllocType::Other, stream),
     	{nblocks*nblocks,2});
-    DeviceTensor<int, 2, true>* blockLabels[2] = {&blockLabel1, &blockLabel2};
-    thrust::fill(
-		 thrust::cuda::par.on(stream),
-		 blockLabel1.data(),
-		 blockLabel1.end(),
-		 0);
-    thrust::fill(
-		 thrust::cuda::par.on(stream),
-		 blockLabel2.data(),
-		 blockLabel2.end(),
-		 0);
+    blockLabel1.copyFrom(blockLabels,stream);
+    blockLabel2.copyFrom(blockLabels,stream);
+    DeviceTensor<int, 2, true>* blockLabelsList[2] = {&blockLabel1, &blockLabel2};
+
+    // fill block labels with proper index value
+    // thrust::fill(
+    // 		 thrust::cuda::par.on(stream),
+    // 		 blockLabel1.data(),
+    // 		 blockLabel1.end(),
+    // 		 0);
+    // thrust::fill(
+    // 		 thrust::cuda::par.on(stream),
+    // 		 blockLabel2.data(),
+    // 		 blockLabel2.end(),
+    // 		 0);
 
 
     // Temporary output memory space we'll use
@@ -257,7 +285,6 @@ void runImagePatchDistance(
 	    //   outDistanceBufHeightView.narrow(1, j, curWidthSize);
             // auto outIndexBufView =
 	    //   outIndexBufHeightView.narrow(1, j, curWidthSize);
-
             auto outDistanceView =
 	      outDistanceHeightView.narrow(1, j, curWidthSize);
             auto outIndexView =
@@ -283,8 +310,8 @@ void runImagePatchDistance(
                 interrupt = true;
                 break;
 	      }
-	      auto curBlockSize = std::min(tileBlocks, nblocks - j);
-	      auto blockLabelView = blockLabels[curStream]->narrow(0, j, curBlockSize);
+	      auto curBlockSize = std::min(tileBlocks, nblocks*nblocks - j);
+	      auto blockLabelView = blockLabelsList[curStream]->narrow(0,j, curBlockSize);
 
 	      runNnfL2Norm(refImgView,
 			   targetImgView,
@@ -317,6 +344,7 @@ void runImagePatchDistance(
         Tensor<float, 3, true>& targetImg,
         Tensor<float, 3, true>& refImg,
         Tensor<float, 2, true>* refPatchNorms,
+        Tensor<int, 2, true> blockLabels,
         int k,
         int h,
         int w,
@@ -332,6 +360,7 @@ void runImagePatchDistance(
         targetImg,
         refImg,
         refPatchNorms,
+	blockLabels,
         k,h,w,c,patchsize,nblocks,
         outDistances,
         outIndices,
@@ -344,6 +373,7 @@ void runImagePatchDistance(
         Tensor<half, 3, true>& targetImg,
         Tensor<half, 3, true>& refImg,
         Tensor<float, 2, true>* refPatchNorms,
+        Tensor<int, 2, true> blockLabels,
         int k,
         int h,
         int w,
@@ -359,6 +389,7 @@ void runImagePatchDistance(
         targetImg,
         refImg,
         refPatchNorms,
+	blockLabels,
         k,h,w,c,patchsize,nblocks,
         outDistances,
         outIndices,
