@@ -19,12 +19,12 @@
 #include <faiss/gpu/utils/DeviceDefs.cuh>
 #include <faiss/gpu/utils/Limits.cuh>
 #include <faiss/gpu/utils/MatrixMult.cuh>
+#include <faiss/gpu/utils/NnfSimpleBlockSelect.cuh>
 
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
 #include <thrust/for_each.h>
-#include <thrust/sequence.h>
 #include <algorithm>
 #include <memory>
 
@@ -46,6 +46,7 @@ void runImagePatchDistance(
         int c,
 	int patchsize,
 	int nblocks,
+	float valMean,
         Tensor<float, 3, true>& outDistances,
         Tensor<int, 4, true>& outIndices,
 	bool computeL2) {
@@ -59,7 +60,7 @@ void runImagePatchDistance(
     fprintf(stdout,"nftrs: %d | height: %d | width: %d\n",
 	    nftrsRef,heightPadRef,widthPadRef);
     auto nftrs = refImg.getSize(0);
-    auto pad = std::floor(patchsize/2);
+    int pad = std::floor(patchsize/2);
 
     // Size of reference image
     auto nftrsTgt = targetImg.getSize(0);
@@ -101,9 +102,15 @@ void runImagePatchDistance(
     FAISS_ASSERT(outIndices.getSize(2) == k);
     FAISS_ASSERT(outIndices.getSize(3) == 2);
 
+    // init for comparison right now, to be removed.
+    thrust::fill(thrust::cuda::par.on(stream),
+		 outDistances.data(),
+		 outDistances.end(),
+		 Limits<float>::getMax());
+
+    
     // If we're querying against a 0 sized set, just return empty results
     if (height == 0 || width == 0  || nftrs == 0) {
-      // TODO: this code might not work below; changed tensors from 2d to 4d
       thrust::fill(
     		   thrust::cuda::par.on(stream),
     		   outDistances.data(),
@@ -117,26 +124,6 @@ void runImagePatchDistance(
     		   -1);
       return;
     }
-
-    DeviceTensor<float, 2, true> rNorms;
-    if (computeL2 && !refPatchNorms) {
-      rNorms = DeviceTensor<float, 2, true>(res, makeTempAlloc(AllocType::Other, stream), {height,width});
-      // TODO: write runL2PatchNorms
-      // runL2PatchNorm(rNorms, True, cNorms, true, stream);
-      refPatchNorms = &rNorms;
-    }
-
-    //
-    // Prepare norm vector ||q||^2; ||c||^2 is already pre-computed
-    //
-    DeviceTensor<float, 2, true> targetPatchNorms(res,
-						 makeTempAlloc(AllocType::Other, stream),
-						 {(int)height, width});
-
-    // ||q||^2
-    // if (computeL2) {
-    //     runL2PatchNorm(queries, queriesRowMajor, queryNorms, true, stream);
-    // }
 
     // By default, aim to use up to 512 MB of memory for the processing, with
     // both number of queries and number of centroids being at least 512.
@@ -156,8 +143,10 @@ void runImagePatchDistance(
 		   tileBlocks);
     int numHeightTiles = utils::divUp(height, tileHeight);
     int numWidthTiles = utils::divUp(width, tileWidth);
-    tileBlocks = k;
     int numBlockTiles = utils::divUp(nblocks*nblocks, tileBlocks);
+    fprintf(stdout,"patchsize: %d | nblocks: %d | k: %d\n",patchsize,nblocks,k);
+    fprintf(stdout,"tileHeight: %d | tileWidth: %d | tileBlocks: %d\n",
+	    tileHeight,tileWidth,tileBlocks);
     fprintf(stdout,"numHeightTiles: %d | numWidthTiles: %d | numBlockTiles: %d\n",
 	    numHeightTiles,numWidthTiles,numBlockTiles);
 
@@ -165,7 +154,7 @@ void runImagePatchDistance(
     // which case we'll return -1 for the index
     FAISS_ASSERT(k <= GPU_MAX_SELECTION_K); // select limitation
 
-    // Create index selection for BLOCKS
+    // Create index selection for BLOCKS to allow for Stream.
     DeviceTensor<int, 2, true> blockLabel1(
     	res,
     	makeTempAlloc(AllocType::Other, stream),
@@ -178,52 +167,49 @@ void runImagePatchDistance(
     blockLabel2.copyFrom(blockLabels,stream);
     DeviceTensor<int, 2, true>* blockLabelsList[2] = {&blockLabel1, &blockLabel2};
 
-    // fill block labels with proper index value
-    // thrust::fill(
-    // 		 thrust::cuda::par.on(stream),
-    // 		 blockLabel1.data(),
-    // 		 blockLabel1.end(),
-    // 		 0);
-    // thrust::fill(
-    // 		 thrust::cuda::par.on(stream),
-    // 		 blockLabel2.data(),
-    // 		 blockLabel2.end(),
-    // 		 0);
-
-
-    // Temporary output memory space we'll use
-    DeviceTensor<float, 2, true> distanceBuf1(
+    //
+    // Temporary memory space to *execute* a single batch
+    //
+    DeviceTensor<float, 3, true> distanceBuf1(
     	res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth});
-    DeviceTensor<float, 2, true> distanceBuf2(
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf2(
     	res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth});
-    DeviceTensor<float, 2, true>* distanceBufs[2] = {&distanceBuf1, &distanceBuf2};
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true>* distanceBufs[2] = {&distanceBuf1, &distanceBuf2};
+
+    // Temporary memory to *accumulate* current topK output from kernel executions.
+    //
+    // In words:
+    // for batches of (Height,Width) store topK from each "blockTile" batch
+    //
 
     // DeviceTensor<float, 3, true> outDistanceBuf1(
     // 	   res,
     // 	   makeTempAlloc(AllocType::Other, stream),
-    // 	   {tileHeight, tileWidth, k});
+    // 	   {tileHeight, tileWidth, numBlockTiles * k});
     // DeviceTensor<float, 3, true> outDistanceBuf2(
     //         res,
     //         makeTempAlloc(AllocType::Other, stream),
-    // 	    {tileHeight, tileWidth, k});
+    // 	    {tileHeight, tileWidth, numBlockTiles * k});
     // DeviceTensor<float, 3, true>* outDistanceBufs[2] = {
     //         &outDistanceBuf1, &outDistanceBuf2};
 
     // DeviceTensor<int, 4, true> outIndexBuf1(
     //         res,
     //         makeTempAlloc(AllocType::Other, stream),
-    //         {tileHeight, tileWidth, k, 2});
+    //         {tileHeight, tileWidth, numBlockTiles * k, 2});
     // DeviceTensor<int, 4, true> outIndexBuf2(
     //         res,
     //         makeTempAlloc(AllocType::Other, stream),
-    //         {tileHeight, tileWidth, k, 2});
+    //         {tileHeight, tileWidth, numBlockTiles * k, 2});
     // DeviceTensor<int, 4, true>* outIndexBufs[2] = {
     //         &outIndexBuf1, &outIndexBuf2};
 
+
+    // Streams allow for concurrent kernel execs.
     auto streams = res->getAlternateStreamsCurrentDevice();
     streamWait(streams, {stream});
 
@@ -247,19 +233,13 @@ void runImagePatchDistance(
 	//   std::cout << "get size " << outDistanceHeightView.getSize(nidx) << std::endl;
 	// }
 
-        auto refImgHeightView = refImg.narrow(1, i, curHeightSize);
-	auto targetImgHeightView = targetImg.narrow(1, i, curHeightSize+2*pad);
+        int start_i = std::max(i-2*pad, 0);
+        auto refImgHeightView = refImg.narrow(1, start_i, curHeightSize + 2*pad);
+	auto targetImgHeightView = targetImg.narrow(1, start_i, curHeightSize+2*pad);
 
-	// for (int nidx = 0; nidx < refImgHeightView.NumDim; nidx += 1){
-	//   std::cout << "get size " << refImgHeightView.getSize(nidx) << std::endl;
-	// }
-
-        auto targetPatchNormsHeightView = targetPatchNorms.narrow(0, i, curHeightSize);
-	
-	// TODO FUNC:
-	// -> inputs is REF pix INDEX, NBLOCK index
-	// -> output is target patch index (x,y) for the NBLOCK in target image.
-
+	/***
+	    view for accumulation buffers
+	 ***/
         // auto outDistanceBufHeightView =
         //         outDistanceBufs[curStream]->narrow(0, 0, curHeightSize);
         // auto outIndexBufHeightView =
@@ -272,28 +252,31 @@ void runImagePatchDistance(
                 interrupt = true;
                 break;
             }
-
-	    std::cout << "i am in the looooops." << std::endl;
             int curWidthSize = std::min(tileWidth, width - j);
 
-	    // Images
-            auto refImgView = refImgHeightView.narrow(2, j, curWidthSize);
-            auto targetImgView = targetImgHeightView.narrow(2, j, curWidthSize+2*pad);
-            auto targetPatchNormsView = targetPatchNormsHeightView.narrow(1, j, curWidthSize);
-	    // Output (vals and locs)
-            // auto outDistanceBufView =
-	    //   outDistanceBufHeightView.narrow(1, j, curWidthSize);
-            // auto outIndexBufView =
-	    //   outIndexBufHeightView.narrow(1, j, curWidthSize);
+	    /***
+		Images (split view to batch across input pixels.)
+	    ***/
+	    int start_j = std::max(j-2*pad, 0);
+            auto refImgView = refImgHeightView
+	      .narrow(2, start_j, curWidthSize+2*pad);
+            auto targetImgView = targetImgHeightView
+	      .narrow(2, start_j, curWidthSize+2*pad);
+	    /***
+		Buffers (for accumulating topK results from block batches)
+	    ***/
+            // auto outDistanceBufWidthView =
+	    //   outDistanceBufHeightView.narrow(1, 0, curWidthSize);
+            // auto outIndexBufWidthView =
+	    //   outIndexBufHeightView.narrow(1, 0,curWidthSize);
+
+	    /***
+		Outputs (vals and locs)
+	    ***/
             auto outDistanceView =
 	      outDistanceHeightView.narrow(1, j, curWidthSize);
             auto outIndexView =
 	      outIndexHeightView.narrow(1, j, curWidthSize);
-
-	    // Buffers for Distance
-            auto distanceBufView = distanceBufs[curStream]
-                                           ->narrow(0, 0, curHeightSize)
-                                           .narrow(1, 0, curWidthSize);
 
 	    for (int nidx = 0; nidx < refImgView.NumDim; nidx += 1){
 	      std::cout << " " << nidx << " get size " << refImgView.getSize(nidx) << std::endl;
@@ -301,33 +284,79 @@ void runImagePatchDistance(
 	    for (int nidx = 0; nidx < targetImgView.NumDim; nidx += 1){
 	      std::cout << " " << nidx << " get size " << targetImgView.getSize(nidx) << std::endl;
 	    }
-	    for (int nidx = 0; nidx < targetPatchNormsView.NumDim; nidx += 1){
-	      std::cout << " " << nidx << " get size " << targetPatchNormsView.getSize(nidx) << std::endl;
-	    }
 
 	    for (int j = 0; j < numBlockTiles; j += tileBlocks) {
 	      if (InterruptCallback::is_interrupted()) {
                 interrupt = true;
                 break;
 	      }
+
+
 	      auto curBlockSize = std::min(tileBlocks, nblocks*nblocks - j);
+
+
+	      // 
+	      // View for Buffers 
+	      //
+
+	      auto distanceBufView = distanceBufs[curStream]
+		->narrow(0, 0, curHeightSize)
+		.narrow(1, 0, curWidthSize)
+		.narrow(2,0,curBlockSize);
+	      // auto outDistanceBufBlockView =
+	      // 	outDistanceBufRowView.narrow(2, blockTileSize * k, k);
+	      // auto outIndexBufBlockView =
+	      // 	outIndexBufRowView.narrow(2, blockTileSize * k, k);
+
+	      //
+	      // View for Inputs
+	      //
 	      auto blockLabelView = blockLabelsList[curStream]->narrow(0,j, curBlockSize);
 
+	      // exec kernel
 	      runNnfL2Norm(refImgView,
 			   targetImgView,
 			   blockLabelView,
-			   outDistanceView,
-			   outIndexView,
-			   patchsize,
-			   nblocks,
-			   true,
+			   distanceBufView,
+			   // outDistanceView,
+			   patchsize,nblocks,true,
 			   streams[curStream]);
-	    }
 
-        }
+	      // select "topK" from "curBlockSize" of outDistances
+	      // this "topK" selection is limited to a "curBlockSize" batch
+	      runNnfSimpleBlockSelect(distanceBufView,
+	      			      blockLabelView,
+	      			      outDistanceView,
+	      			      outIndexView,
+	      			      // outDistanceBufBlockView,
+	      			      // outIndexBufBlockView,
+	      			      valMean,
+	      			      false,k,streams[curStream]);
 
-        // curStream = (curStream + 1) % 2;
-    }
+
+	    } // batching over blockTiles
+
+	    /*******
+
+		    Write Buffers to Output
+
+		    1.) select the topK and store into the output
+
+		    TODO:
+		    - runBlockSelectPair
+
+	    *******/
+            // runNnfSimpleBlockSelect(outDistanceBufWidthView,
+	    // 			    outIndexBufWidthView,
+	    // 			    outDistanceView,
+	    // 			    outIndexView, 0.,
+	    // 			    true,k,streams[curStream]);
+
+            curStream = (curStream + 1) % 2;
+
+        } // batching over widthTiles
+
+    } // batching over heightTiles
 
     // Have the desired ordering stream wait on the multi-stream
     streamWait({stream}, streams);
@@ -351,6 +380,7 @@ void runImagePatchDistance(
         int c,
 	int patchsize,
 	int nblocks,
+	float valMean,
         Tensor<float, 3, true>& outDistances,
         Tensor<int, 4, true>& outIndices,
 	bool computeL2){
@@ -361,7 +391,9 @@ void runImagePatchDistance(
         refImg,
         refPatchNorms,
 	blockLabels,
-        k,h,w,c,patchsize,nblocks,
+        k,h,w,c,
+	patchsize,
+	nblocks,valMean,
         outDistances,
         outIndices,
 	computeL2);
@@ -380,6 +412,7 @@ void runImagePatchDistance(
         int c,
 	int patchsize,
 	int nblocks,
+	float valMean,
         Tensor<float, 3, true>& outDistances,
         Tensor<int, 4, true>& outIndices,
 	bool computeL2){
@@ -390,7 +423,9 @@ void runImagePatchDistance(
         refImg,
         refPatchNorms,
 	blockLabels,
-        k,h,w,c,patchsize,nblocks,
+        k,h,w,c,patchsize,
+	nblocks,
+	valMean,
         outDistances,
         outIndices,
 	computeL2);

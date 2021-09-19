@@ -36,6 +36,7 @@ struct GpuNnfDistanceParams {
               c(0),
               ps(0),
               nblocks(0),
+              valMean(0),
               dType(DistanceDataTypeNnf::F32),
               targetImg(nullptr),
               targetImgType(DistanceDataTypeNnf::F32),
@@ -71,6 +72,7 @@ struct GpuNnfDistanceParams {
     int c; // color
     int ps; // patchsize radius on one direction
     int nblocks; // number of blocks to search in one direction
+    float valMean;
     DistanceDataTypeNnf dType;// data type of pixels
 
     //

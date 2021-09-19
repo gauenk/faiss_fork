@@ -29,6 +29,7 @@ void runImagePatchDistance(
 	int c,
 	int patchsize,
 	int nblocks,
+	float valMean,
         Tensor<float, 3, true>& outDistances,
         Tensor<int, 4, true>& outIndices,
 	bool computeL2);
@@ -46,6 +47,7 @@ void runImagePatchDistance(
 	int c,
 	int patchsize,
 	int nblocks,
+	float valMean,
         Tensor<float, 3, true>& outDistances,
         Tensor<int, 4, true>& outIndices,
 	bool computeL2);
@@ -65,6 +67,7 @@ void bfNnfOnDevice(
 	int c,
 	int ps,
 	int nblocks,
+	float valMean,
         faiss::MetricType metric,
         float metricArg,
         Tensor<float, 3, true>& outDistances,
@@ -90,7 +93,8 @@ void bfNnfOnDevice(
 		refImg,
 		refPatchNorms,
 		blockLabels,
-                k,h,w,c,ps,nblocks,
+                k,h,w,c,ps,
+		nblocks,valMean,
                 outDistances,
                 outIndices,
 		~ignoreOutDistances);

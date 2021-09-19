@@ -51,6 +51,7 @@ set(FAISS_GPU_SRC
   impl/scan/IVFInterleaved512.cu
   impl/scan/IVFInterleaved1024.cu
   impl/scan/IVFInterleaved2048.cu
+  utils/NnfSimpleBlockSelect.cu
   utils/BlockSelectFloat.cu
   utils/DeviceUtils.cu
   utils/StackDeviceMemory.cpp
@@ -129,6 +130,7 @@ set(FAISS_GPU_HEADERS
   impl/RemapIndices.h
   impl/VectorResidual.cuh
   impl/scan/IVFInterleavedImpl.cuh
+  utils/NnfSimpleBlockSelect.cuh
   utils/BlockSelectKernel.cuh
   utils/Comparators.cuh
   utils/ConversionOperators.cuh
