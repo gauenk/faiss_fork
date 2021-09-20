@@ -49,7 +49,7 @@ namespace faiss {
       auto stream = res->getDefaultStreamCurrentDevice();
       // std::cout << "Got the Stream!" << std::endl;
 
-      int pad = (int)std::floor(args.ps/2);
+      int pad = std::floor(args.ps/2) + std::floor(args.nblocks/2);
       auto targetImg = toDeviceTemporary<T, 3>(
 					       res,
 					       device,
@@ -71,16 +71,6 @@ namespace faiss {
 					    stream,
 					    {args.nblocks*args.nblocks,2});
 
-      DeviceTensor<float, 2, true> refPatchNorms;
-      if (args.refPatchNorms) {
-        refPatchNorms = toDeviceTemporary<float, 2>(
-						    res,
-						    device,
-						    const_cast<float*>
-						    (args.refPatchNorms),
-						    stream,
-						    {args.h,args.w});
-      }
 
       auto tOutDistances = toDeviceTemporary<float, 3>(
 						       res,
@@ -106,7 +96,6 @@ namespace faiss {
                 stream,
 		targetImg,
 		refImg,
-                args.refPatchNorms ? &refPatchNorms : nullptr,
 		blockLabels,
                 args.k,
 		args.h,
@@ -157,7 +146,6 @@ namespace faiss {
                 stream,
 		targetImg,
 		refImg,
-                args.refPatchNorms ? &refPatchNorms : nullptr,
 		blockLabels,
                 args.k,
                 args.h,

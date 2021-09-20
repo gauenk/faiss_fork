@@ -100,10 +100,8 @@ namespace faiss {
       // std::cout << "maxThreads: " << maxThreads << std::endl;
       int sqrtThreads = 32;//utils::pow(maxThreads*1.0, .5);
       
-      auto nBlocksH = inVals.getSize(0) / sqrtThreads;
-      nBlocksH = nBlocksH > 0 ? nBlocksH : 1;
-      auto nBlocksW = inVals.getSize(1) / sqrtThreads;
-      nBlocksW = nBlocksW > 0 ? nBlocksW : 1;
+      auto nBlocksH = utils::divUp(inVals.getSize(0),sqrtThreads);
+      auto nBlocksW = utils::divUp(inVals.getSize(1),sqrtThreads);
       
       // printf("(nBlocksH,nBlocksW,sqrtThreads): (%d,%d,%d)\n",nBlocksH,nBlocksW,sqrtThreads);
       auto grid = dim3(nBlocksH,nBlocksW);

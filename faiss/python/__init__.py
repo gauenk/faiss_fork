@@ -846,7 +846,6 @@ add_ref_in_constructor(BufferedIOReader, 0)
 # GPU functions
 ###########################################
 
-
 def index_cpu_to_gpu_multiple_py(resources, index, co=None, gpus=None):
     """ builds the C++ vectors for the GPU indices and the
     resources. Handles the case where the resources are assigned to
@@ -987,13 +986,9 @@ def knn_gpu(res, xq, xb, k, D=None, I=None, metric=METRIC_L2):
 
     # no stream synchronization needed, inputs and outputs are guaranteed to
     # be on the CPU (numpy arrays)
-    bfKnnPizza(res, args)
+    bfKnn(res, args)
 
     return D, I
-
-def run_nnf():
-    print("Heeeey")
-    return 
 
 # allows numpy ndarray usage with bfKnn for all pairwise distances
 def pairwise_distance_gpu(res, xq, xb, D=None, metric=METRIC_L2):
@@ -1082,8 +1077,7 @@ def pairwise_distance_gpu(res, xq, xb, D=None, metric=METRIC_L2):
 
     # no stream synchronization needed, inputs and outputs are guaranteed to
     # be on the CPU (numpy arrays)
-    bfKnnPizza(res, args)
-    foobar()
+    bfKnn(res, args)
 
     return D
 
@@ -1643,3 +1637,4 @@ class ResultHeap:
 
     def finalize(self):
         self.heaps.reorder()
+

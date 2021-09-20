@@ -389,13 +389,21 @@ inline void chooseImageTileSize(
 
     // prefer keeping number of ELEMS per CUDA thread to about 1024
     auto npix = height*width;
-    auto numOptsPerblock = patchsize*patchsize*nftrs;
-    int preferredTileBlocks = 512;
-    if (numOptsPerblock <= 32){
-      preferredTileBlocks = 1024;
+    auto numOptsPerCudaBlock = patchsize*patchsize*nftrs;
+    int preferredTileBlocks;
+    if (numOptsPerCudaBlock <= 32){
+      preferredTileBlocks = nblocks*nblocks; // all in one batch.
+    }else if ( numOptsPerCudaBlock <= 1024){
+      preferredTileBlocks = 256;
+    } else if ( numOptsPerCudaBlock <= 1024){
+      preferredTileBlocks = 64;
+    } else{
+      preferredTileBlocks = 16;
     }
 
-    int tilePix = std::min(targetUsage / preferredTileBlocks, npix);
+    int currUsage = numOptsPerCudaBlock * preferredTileBlocks;
+    int remainingUseage = (targetUsage + currUsage - 1) / currUsage;
+    int tilePix = std::min(remainingUseage, npix);
     int sqrtTilePix = (int)std::floor(std::sqrt(tilePix*1.0));
     tileHeight = sqrtTilePix;
     tileWidth = sqrtTilePix;

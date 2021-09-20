@@ -39,10 +39,7 @@ struct GpuNnfDistanceParams {
               valMean(0),
               dType(DistanceDataTypeNnf::F32),
               targetImg(nullptr),
-              targetImgType(DistanceDataTypeNnf::F32),
               refImg(nullptr),
-              refImgType(DistanceDataTypeNnf::F32),
-              refPatchNorms(nullptr),
 	      blockLabels(nullptr),
               outDistances(nullptr),
               ignoreOutDistances(false),
@@ -83,7 +80,6 @@ struct GpuNnfDistanceParams {
     /// numVectors x dims, with dims innermost; otherwise,
     /// dims x numVectors, with numVectors innermost
     const void* targetImg;
-    DistanceDataTypeNnf targetImgType;
 
     //
     // The query vectors (i.e., find k-nearest neighbors in `vectors` for each
@@ -94,11 +90,6 @@ struct GpuNnfDistanceParams {
     /// numQueries x dims, with dims innermost; otherwise,
     /// dims x numQueries, with numQueries innermost
     const void* refImg;
-    DistanceDataTypeNnf refImgType;
-
-    /// Precomputed L2 norms for each vector in `vectors`, which can be
-    /// optionally provided in advance to speed computation for METRIC_L2
-    const float* refPatchNorms;
 
     /// Block labels used to indexing inside of cuda kerenl. Yes, we could have
     /// just done this in c++ but python is much simpler

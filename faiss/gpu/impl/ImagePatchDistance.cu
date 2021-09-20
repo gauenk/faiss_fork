@@ -38,7 +38,6 @@ void runImagePatchDistance(
         cudaStream_t stream,
         Tensor<T, 3, true>& targetImg,
         Tensor<T, 3, true>& refImg,
-        Tensor<float, 2, true>* refPatchNorms,
         Tensor<int, 2, true> blockLabels,
         int k,
         int h,
@@ -60,7 +59,9 @@ void runImagePatchDistance(
     fprintf(stdout,"nftrs: %d | height: %d | width: %d\n",
 	    nftrsRef,heightPadRef,widthPadRef);
     auto nftrs = refImg.getSize(0);
-    int pad = std::floor(patchsize/2);
+    int nblocks2 = nblocks*nblocks;
+    int pad = std::floor(patchsize/2) + std::floor(nblocks/2);
+    int psHalf = std::floor(patchsize/2);
 
     // Size of reference image
     auto nftrsTgt = targetImg.getSize(0);
@@ -129,7 +130,7 @@ void runImagePatchDistance(
     // both number of queries and number of centroids being at least 512.
     int tileHeight = 0; // batchsize across height
     int tileWidth = 0; // batchsize across width
-    int tileBlocks = 0; // batchsize across width
+    int tileBlocks = 0; // batchsize across blocks
     chooseImageTileSize(
 		   height, // image height
     		   width, // image width
@@ -143,7 +144,7 @@ void runImagePatchDistance(
 		   tileBlocks);
     int numHeightTiles = utils::divUp(height, tileHeight);
     int numWidthTiles = utils::divUp(width, tileWidth);
-    int numBlockTiles = utils::divUp(nblocks*nblocks, tileBlocks);
+    int numBlockTiles = utils::divUp((nblocks*nblocks), tileBlocks);
     fprintf(stdout,"patchsize: %d | nblocks: %d | k: %d\n",patchsize,nblocks,k);
     fprintf(stdout,"tileHeight: %d | tileWidth: %d | tileBlocks: %d\n",
 	    tileHeight,tileWidth,tileBlocks);
@@ -218,7 +219,7 @@ void runImagePatchDistance(
 
     // (old) Tile HEIGHT pixels
     // (new) Tile over HEIGHT and WIDTH pixels in REF image
-    for (int i = 0; i < numHeightTiles; i += tileHeight) {
+    for (int i = 0; i < height; i += tileHeight) {
         if (interrupt || InterruptCallback::is_interrupted()) {
             interrupt = true;
             break;
@@ -233,9 +234,14 @@ void runImagePatchDistance(
 	//   std::cout << "get size " << outDistanceHeightView.getSize(nidx) << std::endl;
 	// }
 
-        int start_i = std::max(i-2*pad, 0);
-        auto refImgHeightView = refImg.narrow(1, start_i, curHeightSize + 2*pad);
-	auto targetImgHeightView = targetImg.narrow(1, start_i, curHeightSize+2*pad);
+        int start_i = i;//std::max(i-(pad), 0);
+	int extra_pad_h = 0;//std::max(pad-(i-start_i),0);
+	int paddedHeightSize = tileHeight + 2*(pad);// + extra_pad_h;
+	paddedHeightSize = std::min(paddedHeightSize,heightPadRef-start_i);
+	
+
+	auto refImgHeightView = refImg.narrow(1, start_i, paddedHeightSize);
+	auto targetImgHeightView = targetImg.narrow(1, start_i, paddedHeightSize);
 
 	/***
 	    view for accumulation buffers
@@ -247,21 +253,42 @@ void runImagePatchDistance(
 
         // (old) Tile WIDTH pixels
         // (new) Tile over NBLOCKS associated with a REF pixel
-        for (int j = 0; j < numWidthTiles; j += tileWidth) {
+        for (int j = 0; j < width; j += tileWidth) {
             if (InterruptCallback::is_interrupted()) {
                 interrupt = true;
                 break;
             }
             int curWidthSize = std::min(tileWidth, width - j);
 
+
+	    // compute input image padding.
+	    // int start_j;
+	    // int extra_pad_w;
+	    // int paddedWidthSize;
+	    // if(j == 0){
+	    //   start_j = 0;
+	    //   paddedWidthSize = curWidthSize + 2*pad;
+	    // } else if((j+tileWidth) >= width){
+	    //   start_j = j-;
+	    //   paddedWidthSize = curWidthSize + 2*pad;
+	    // } else{
+
+	    // }
+	    int start_j = j;
+	    int extra_pad_w = 0;
+	    // if (start_j>0){ start_j = 27; }
+	    // int extra_pad_w = std::max(pad-(j-start_j),0);
+	    int paddedWidthSize = tileWidth + 2*(pad);
+	    paddedWidthSize = std::min(paddedWidthSize,widthPadRef-start_j);
+
 	    /***
 		Images (split view to batch across input pixels.)
 	    ***/
-	    int start_j = std::max(j-2*pad, 0);
             auto refImgView = refImgHeightView
-	      .narrow(2, start_j, curWidthSize+2*pad);
+	      .narrow(2, start_j, paddedWidthSize);
             auto targetImgView = targetImgHeightView
-	      .narrow(2, start_j, curWidthSize+2*pad);
+	      .narrow(2, start_j, paddedWidthSize);
+
 	    /***
 		Buffers (for accumulating topK results from block batches)
 	    ***/
@@ -278,21 +305,30 @@ void runImagePatchDistance(
             auto outIndexView =
 	      outIndexHeightView.narrow(1, j, curWidthSize);
 
-	    for (int nidx = 0; nidx < refImgView.NumDim; nidx += 1){
-	      std::cout << " " << nidx << " get size " << refImgView.getSize(nidx) << std::endl;
-	    }
-	    for (int nidx = 0; nidx < targetImgView.NumDim; nidx += 1){
-	      std::cout << " " << nidx << " get size " << targetImgView.getSize(nidx) << std::endl;
-	    }
+	    // for (int nidx = 0; nidx < refImgView.NumDim; nidx += 1){
+	    //   std::cout << " " << nidx << " get size " << refImgView.getSize(nidx) << std::endl;
+	    // }
+	    // for (int nidx = 0; nidx < targetImgView.NumDim; nidx += 1){
+	    //   std::cout << " " << nidx << " get size " << targetImgView.getSize(nidx) << std::endl;
+	    // }
+	    // for (int nidx = 0; nidx < outDistanceView.NumDim; nidx += 1){
+	    //   std::cout << " " << nidx << " get size " << outDistanceView.getSize(nidx) << std::endl;
+	    // }
 
-	    for (int j = 0; j < numBlockTiles; j += tileBlocks) {
+	    for (int blk = 0; blk < nblocks2; blk += tileBlocks) {
 	      if (InterruptCallback::is_interrupted()) {
                 interrupt = true;
                 break;
 	      }
 
+	      auto curBlockSize = std::min(tileBlocks, nblocks2 - blk);
+	      // std::cout << "start_i " << start_i << std::endl;
+	      // std::cout << "extra_pad_h " << extra_pad_h << std::endl;
+	      // std::cout << "paddedHeightSize " << paddedHeightSize << std::endl;
+	      // std::cout << "start_j " << start_j << std::endl;
+	      // std::cout << "extra_pad_w " << extra_pad_w << std::endl;
+	      // std::cout << "paddedWidthSize " << paddedWidthSize << std::endl;
 
-	      auto curBlockSize = std::min(tileBlocks, nblocks*nblocks - j);
 
 
 	      // 
@@ -311,7 +347,8 @@ void runImagePatchDistance(
 	      //
 	      // View for Inputs
 	      //
-	      auto blockLabelView = blockLabelsList[curStream]->narrow(0,j, curBlockSize);
+	      auto blockLabelView = blockLabelsList[curStream]
+		->narrow(0, blk, curBlockSize);
 
 	      // exec kernel
 	      runNnfL2Norm(refImgView,
@@ -372,7 +409,6 @@ void runImagePatchDistance(
         cudaStream_t stream,
         Tensor<float, 3, true>& targetImg,
         Tensor<float, 3, true>& refImg,
-        Tensor<float, 2, true>* refPatchNorms,
         Tensor<int, 2, true> blockLabels,
         int k,
         int h,
@@ -389,7 +425,6 @@ void runImagePatchDistance(
         stream,
         targetImg,
         refImg,
-        refPatchNorms,
 	blockLabels,
         k,h,w,c,
 	patchsize,
@@ -404,7 +439,6 @@ void runImagePatchDistance(
         cudaStream_t stream,
         Tensor<half, 3, true>& targetImg,
         Tensor<half, 3, true>& refImg,
-        Tensor<float, 2, true>* refPatchNorms,
         Tensor<int, 2, true> blockLabels,
         int k,
         int h,
@@ -421,7 +455,6 @@ void runImagePatchDistance(
         stream,
         targetImg,
         refImg,
-        refPatchNorms,
 	blockLabels,
         k,h,w,c,patchsize,
 	nblocks,

@@ -7,6 +7,7 @@ from einops import rearrange
 import sys
 sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib")
 from align import nnf 
+from align.xforms import pix_to_blocks
 
 def swig_ptr_from_FloatTensor(x):
     """ gets a Faiss SWIG pointer from a pytorch tensor (on CPU or GPU) """
@@ -57,11 +58,15 @@ def pad_numpy(ndarray,pads):
 # h,w,c = 16,16,3
 # h,w,c = 17,17,3
 # h,w,c = 256,256,3
+h,w,c = 32,32,3
+# h,w,c = 48,48,3
+# h,w,c = 32,32,3
 # h,w,c = 1024,1024,3
-h,w,c = 32,32,24
-ps,nblocks = 3,3
-k = nblocks**2
-pad = int(ps//2)
+# h,w,c = 32,32,3
+# ps,nblocks = 11,10
+ps,nblocks = 3,9
+k = 2
+pad = int(ps//2)+int(nblocks//2)
 pads = (pad,pad,pad,pad)
 
 
@@ -72,20 +77,28 @@ for i in range(nblocks**2):
     x,y = np.where(blockLabelsTmp == i)
     blockLabels[i,0] = x
     blockLabels[i,1] = y
-blockLabels -= 1
+blockLabels -= (nblocks//2)
+# blockLabels = blockLabels[[4,5],:]
+# k,nblocks = 4,2
 # print(blockLabels - 1)
 
 # -- create images --
 ref_image = np.random.rand(c,h,w).astype(np.float32)
+# ref_image[0,:,:] = 0
+# ref_image[1,:,:] = 1.
 bfnnf_ref_image = pad_numpy(ref_image,pads)
 bfnnf_ref_image = np.ascontiguousarray(bfnnf_ref_image)
 ref_image_T = torch.Tensor(ref_image)
-target_image_T = torch.nn.functional.pad(ref_image_T[None,:,1:,:-1],(pad,1+pad,1+pad,pad))[0]
+target_image_T = torch.nn.functional.pad(ref_image_T[None,:,:-1,:-1],(1+pad,pad,1+pad,pad),mode="reflect")[0]
+bfnnf_ref_image = torch.nn.functional.pad(ref_image_T[None,:,2:,:-2],(pad,2+pad,pad,2+pad),mode="reflect")[0]
+bfnnf_ref_image = np.copy(np.array(bfnnf_ref_image))
+# bfnnf_ref_image = np.copy(np.array(target_image_T))
+bfnnf_ref_image = np.ascontiguousarray(bfnnf_ref_image)
+
 # target_image_T = torch.nn.functional.pad(ref_image_T[None,:,:-1,1:],(pad,1+pad,pad,1+pad))[0]
 target_image = np.copy(np.array(target_image_T))
 target_image = np.ascontiguousarray(target_image)
 print("target_image.shape ",target_image.shape)
-
 
 #
 # -- compute FAISS nnf --
@@ -100,10 +113,15 @@ nnf_ref = torch.Tensor(ref_image)
 # nnf_target = target_image[:,pad:nnf_ref.shape[1]+pad,pad:nnf_ref.shape[2]+pad]#ref_image_T
 # nnf_target = target_image[:,:nnf_ref.shape[1],:nnf_ref.shape[2]]#ref_image_T
 nnf_ref = torch.Tensor(bfnnf_ref_image)
-nnf_target = target_image_T[:,:nnf_ref.shape[1],:nnf_ref.shape[2]]
+# nnf_target = target_image_T[:,:nnf_ref.shape[1],:nnf_ref.shape[2]]
+nnf_target = target_image
 nnf_target = torch.Tensor(np.copy(np.array(nnf_target)))
+
+# pad = ps//2 + nblocks
+nnf_ref = nnf_ref[:,pad:-pad,pad:-pad]
+nnf_target = nnf_target[:,pad:-pad,pad:-pad]
 start_time = time.perf_counter()
-nnf_vals,nnf_locs = nnf.compute_nnf(nnf_ref,nnf_target,ps,K=9,gpuid=0)
+nnf_vals,nnf_locs = nnf.compute_nnf(nnf_ref,nnf_target,ps,K=k,gpuid=0)
 nnf_runtime = time.perf_counter() - start_time
 
 # -- get output comparison --
@@ -122,7 +140,6 @@ print(nnf_locs[0,0,9,9,0])
 
 vals = np.ascontiguousarray(np.zeros((h,w,k))).astype(np.float32)
 locs = np.ascontiguousarray(np.zeros((h,w,k,2))).astype(np.int32)
-
 
 # swig_target_image = swig_ptr_from_FloatTensor(target_image)
 # swig_ref_image = swig_ptr_from_FloatTensor(ref_image)
@@ -148,6 +165,8 @@ print("[post] res")
 # exit()
 
 # -- numpy to swig --
+bfnnf_ref_image = np.ascontiguousarray(bfnnf_ref_image)
+target_image = np.ascontiguousarray(target_image)
 swig_ref_image = faiss.swig_ptr(bfnnf_ref_image)
 swig_target_image = faiss.swig_ptr(target_image)
 swig_vals = faiss.swig_ptr(vals)
@@ -163,6 +182,8 @@ assert np.sum(vals.shape[0] - (bfnnf_ref_image.shape[1]-2*pad)) == 0, "same shap
 assert np.sum(vals.shape[1] - (bfnnf_ref_image.shape[2]-2*pad)) == 0, "same shape."
 assert np.sum(locs.shape[0] - (bfnnf_ref_image.shape[1]-2*pad)) == 0, "same shape."
 assert np.sum(locs.shape[1] - (bfnnf_ref_image.shape[2]-2*pad)) == 0, "same shape."
+print( blockLabels.shape )
+
 
 # -- create arguments --
 args = faiss.GpuNnfDistanceParams()
@@ -189,8 +210,20 @@ args.outIndices = swig_locs
 # -- call function --
 print("Starting bfNnf")
 start_time = time.perf_counter()
-faiss.bfNnf(res, args)
+# faiss.bfNnf(res, args)
+sys.path.append("/home/gauenk/Documents/faiss/contrib/")
+import nnf_utils as nnf_utils
+refImg = bfnnf_ref_image
+tgtImg = target_image
+vals,locs = None,None
+patchsize = ps
+blockLabels = blockLabels
+shape = (c,h,w)
+vals,locs = nnf_utils.runNnf(res, shape, refImg, tgtImg, vals, locs,
+                             patchsize, nblocks, k,
+                             valMean = 0., blockLabels=blockLabels)
 bfNnf_runtime = time.perf_counter() - start_time
+# print(locs[:3,:3])
 
 # print(vals)
 # print(ref_image[:,:3,:3])
@@ -203,13 +236,42 @@ check_xy = [0,0]
 print("Our-L2 Output: ",vals[check_xy[0],check_xy[1],:])
 check_xy = [1,1]
 print("Our-L2 Output: ",vals[check_xy[0],check_xy[1],:])
-check_xy = [9,9]
+check_xy = [h//2,w//2]
 print("Our-L2 Output: ",vals[check_xy[0],check_xy[1],:])
-check_xy = [30,30]
+check_xy = [-2,-2]
 print("Our-L2 Output: ",vals[check_xy[0],check_xy[1],:])
-check_xy = [31,31]
+check_xy = [-1,-1]
 print("Our-L2 Output: ",vals[check_xy[0],check_xy[1],:])
+print("Zero Check: ",np.any(vals==0))
+print("Nan Check: ",np.any(np.isnan(vals)))
 
+# offset = ps//2
+print(nnf_locs[0,0,h//2,w//2,0])
+# nnf_locs_x = nnf_locs[0,0,offset:-offset,offset:-offset,0,1] \
+#     - np.arange(w)[None,:] - offset
+# nnf_locs_y = nnf_locs[0,0,offset:-offset,offset:-offset,0,0] \
+#     - np.arange(h)[:,None] - offset
+nnf_locs_x = nnf_locs[0,0,:,:,0,1] \
+    - np.arange(w)[None,:]
+nnf_locs_y = nnf_locs[0,0,:,:,0,0] \
+    - np.arange(h)[:,None]
+nnf_locs = np.stack([nnf_locs_y,nnf_locs_x],axis=-1)
+intIdx = slice(nblocks//2+ps//2,-(nblocks//2+ps//2))
+print("NNF vs Ours [locs]: ", np.sum(np.abs(locs[intIdx,intIdx,0] -\
+                                            nnf_locs[intIdx,intIdx])))
+print(locs[h//2:h//2+2,w//2:w//2+2,0])
+print(nnf_locs[h//2:h//2+2,w//2:w//2+2])
+
+# nnf_locs_to_xform = rearrange(nnf_locs[0,0,1:-1,1:-1,0],'h w k -> 1 (h w) 1 k')
+# nnf_pix = pix_to_blocks(torch.LongTensor(nnf_locs_to_xform),nblocks)
+# nnf_pix = rearrange(nnf_pix,'1 (h w) 1 -> h w',h=h)
+# print(nnf_pix[8,8])
+
+# print(vals)
+# print(locs)
+
+# for i in range(vals.shape[1]):
+#     print(i,vals[i,:],vals[i,:].shape)
 # print("vals.")
 # print(vals[8,8,:])
 # print("nnf.")
@@ -237,39 +299,50 @@ print("Our-L2 Output: ",vals[check_xy[0],check_xy[1],:])
 #
 
 # blockLabelsInt = (blockLabels - 1).astype(np.int32)
-print(np.sum(np.abs(bfnnf_ref_image[:,1,1] - ref_image[:,0,0])))
-print(np.sum(np.abs(target_image[:,1,1] - nnf_target[:,0,0].numpy())))
+# print(np.sum(np.abs(bfnnf_ref_image[:,1,1] - ref_image[:,0,0])))
+# print(np.sum(np.abs(target_image[:,1,1] - nnf_target[:,0,0].numpy())))
 blockLabelsInt = (blockLabels).astype(np.int32)
 
-print(blockLabelsInt)
+# print(blockLabelsInt)
 tol = 1e-4
-for xstart in np.arange(0,32):
-    for ystart in np.arange(0,32):
-        print(xstart,ystart)
+print(ps)
+offset = pad-ps//2 # offset for computing GT since we padded images
+
+# vals[vals>10**4]=np.inf
+# print(vals[0,:,0])
+
+for _xstart in np.arange(0,w):
+    for _ystart in np.arange(0,h):
+        # print(xstart,ystart)
+        xstart = _xstart + offset
+        ystart = _ystart + offset
+
         res = []
         i = 0
-        ref_xy = bfnnf_ref_image[:,xstart+1-ps//2:xstart+1+ps//2+1,
-                                 ystart+1-ps//2:ystart+1+ps//2+1]
-        for i in range(nblocks**2):
+        ref_xy = bfnnf_ref_image[:,xstart:xstart+ps,
+                                 ystart:ystart+ps]
+        for i in range(blockLabelsInt.shape[0]):
             x,y = blockLabelsInt[i,:]
- 
-            x_start = xstart-ps//2 + x + 1
-            y_start = ystart-ps//2 + y + 1
-            x_end = xstart+ps//2+1 + x + 1
-            y_end = ystart+ps//2+1 + y + 1
+
+            x_start = xstart + x
+            y_start = ystart + y
+            x_end = xstart + x + ps
+            y_end = ystart + y + ps
+            # print(i,(x_start,x_end),(y_start,y_end))
             if x_start < 0 or y_start < 0:
+                # print("continue")
                 res.append(np.inf)
                 continue
             if x_end > target_image.shape[1]:
+                # print("continue")
                 res.append(np.inf)
                 continue
             if y_end > target_image.shape[2]:
+                # print("continue")
                 res.append(np.inf)
                 continue
-            print((x_start,x_end),(y_start,y_end))
             tgt_xy = target_image[:,x_start:x_end,
                                   y_start:y_end]
-            print(tgt_xy.shape)
             ref_xy = torch.Tensor(ref_xy)
             tgt_xy = torch.Tensor(tgt_xy)
             # ref_xy = nnf_ref[:,xstart+pad:xstart+ps+pad,
@@ -280,12 +353,30 @@ for xstart in np.arange(0,32):
             # ref_xy = ref_xy[0,0,0]
             # tgt_xy = tgt_xy[0,0,0]
             res.append(float(torch.sum(torch.pow( ref_xy - tgt_xy , 2)).item()))
-        res = np.sort(np.array(res))
-        val = vals[xstart,ystart,:]
-        val[val>10**5] = 0.
-        res = np.nan_to_num(res,posinf=0.)
-        print(res,val, res - val)
-        assert np.sum(np.abs(val-res)) < tol, "Must be equal."
+        # res = np.sort(np.array(res))
+        val = vals[_xstart,_ystart,:]
+        val = np.sort(val)
+        loc = locs[_xstart,_ystart,:]
+        val[val>10**3] = np.inf
+        order = blockLabels[np.argsort(res),:][:len(val)]
+        res = np.sort(res)
+        res = np.nan_to_num(res,posinf=0.)[:len(val)]
+        # print(order[:len(val)],loc)
+        # print(res - val)
+        # print("-"*10)
+        def assert_msg():
+            msg = "res" + str(res) + "\n\n"
+            msg += "GT order " + str(order) + "\n\n"
+            msg += "val" + str(val) + "\n\n"
+            msg += "loc" + str(loc) + "\n\n"
+            msg += "index: " + str(i)+ "\n\n"
+            msg += "(x,y): ({},{})".format(xstart,ystart)+ "\n\n"
+            msg += "(x,y): ({},{})".format(_xstart,_ystart)+ "\n\n"
+            return msg
+        msg = assert_msg()
+        if xstart == (h//2) and ystart == (w//2):
+            print(msg)
+        assert np.mean(np.abs(val-res)) < tol, ("Must be equal. " + msg)
         # print("val, res, val/res",val,res,val / res)
         # print("Expected Output: ",np.array(res))
     
