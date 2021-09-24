@@ -50,9 +50,9 @@ template <
 	  bool NormLoop,
 	  bool NormSquared>
 __global__ void nnfl2NormRowMajor(
-        Tensor<TVec, 3, true, IndexType> ref,
-        Tensor<TVec, 3, true, IndexType> target,
-        Tensor<int, 2, true, IndexType> blocks,
+	Tensor<TVec, 4, true, IndexType> burst,
+	Tensor<TVec, 4, true, IndexType> ave,
+        Tensor<int, 3, true, IndexType> blocks,
         Tensor<float, 3, true, IndexType> vals,
 	int patchsize, int nblocks, TVec TVecMax) {
     extern __shared__ char smemByte[]; // #warps * RowTileSize * ColTileSize * BlockTileSize elements
@@ -61,20 +61,20 @@ __global__ void nnfl2NormRowMajor(
     // get the cuda vars 
     IndexType numWarps = utils::divUp(blockDim.x, kWarpSize);
     IndexType laneId = getLaneId();
-    // IndexType laneId = threadIdx.x & 0x1f;
     IndexType threadId = threadIdx.x;
     IndexType warpId = threadId / kWarpSize;
 
     // where do we start the batch within our "thread"
     IndexType height = vals.getSize(0);
     IndexType width = vals.getSize(1);
-    IndexType heightPadded = target.getSize(1);
-    IndexType widthPadded = target.getSize(2);
+    IndexType nframes = burst.getSize(0);
+    IndexType nftrs = burst.getSize(1);
+    IndexType heightPadded = burst.getSize(2);
+    IndexType widthPadded = burst.getSize(3);
     // int heightPadded = 36;
     // int widthPadded = 36;
 
     // variables needed to use our weird access pattern
-    int nftrs = ref.getSize(0);
     int ps = patchsize;
     int psSub1 = patchsize-1;
     int ps2 = patchsize*patchsize;
@@ -119,12 +119,6 @@ __global__ void nnfl2NormRowMajor(
 	  for (IndexType col = 0; col < numColIters; ++col) {
 	    for (IndexType blk = 0; blk < numBlockIters; ++blk) {
 
-	      IndexType tRowStart = blocks[blockStart+blk][0]+rowStartPix+row;
-	      IndexType tColStart = blocks[blockStart+blk][1]+colStartPix+col;
-
-	      bool legalRowTgt = legal_access(tRowStart,(psSub1),0,heightPadded);
-	      bool legalColTgt = legal_access(tColStart,(psSub1),0,widthPadded);
-	      bool legalAccess = legalRowTgt && legalColTgt;
 	      
 	      // if legal access is false for any patch index,
 	      // this thread's work (and the other's on the same patch) are voided.
@@ -136,22 +130,41 @@ __global__ void nnfl2NormRowMajor(
 		     txIndex < dim;
 		     txIndex += blockDim.x) {
 
+		  // features 
 		  IndexType ftr = txIndex % nftrs;
-		  IndexType cmod = txIndex / nftrs;
-		  IndexType hIdx = (cmod / patchsize);
-		  IndexType wIdx = (cmod % patchsize);
-		  
+		  IndexType fDiv = txIndex / nftrs;
+
+		  // width
+		  IndexType wIdx = fDiv % patchsize;
+		  IndexType wDiv = fDiv / patchsize;
+
+		  // height
+		  IndexType hIdx = wDiv % patchsize;
+		  IndexType hDiv = wDiv / patchsize;
+
+		  // frame index
+		  IndexType fIdx = hDiv % nframes;
+
+		  // blocks
+		  IndexType tRowStart = blocks[fIdx][blockStart+blk][0]+rowStartPix+row;
+		  IndexType tColStart = blocks[fIdx][blockStart+blk][1]+colStartPix+col;
+
+		  // legal accesses only
+		  bool legalRowTgt = legal_access(tRowStart,(psSub1),0,heightPadded);
+		  bool legalColTgt = legal_access(tColStart,(psSub1),0,widthPadded);
+		  bool legalAccess = legalRowTgt && legalColTgt;
+
+		  // image indices
 		  IndexType targetRow = tRowStart + hIdx;
 		  IndexType targetCol = tColStart + wIdx;
 		  IndexType refRow = rowStartPix + row + hIdx;
 		  IndexType refCol = colStartPix + col + wIdx;
 
-
-		  TVec target_val = legalAccess ?
-		    target[ftr][targetRow][targetCol]
+		  TVec burst_val = legalAccess ?
+		    burst[fIdx][ftr][targetRow][targetCol]
 		    : TVecMax;
-		  TVec ref_val = ref[ftr][refRow][refCol];
-		  TVec delta_val = Math<TVec>::sub(ref_val,target_val);
+		  TVec ave_val = ave[ftr][blockStart+blk][refRow][refCol];
+		  TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
 
 		  delta_val = Math<TVec>::mul(delta_val,delta_val);
 		  pixNorm[0][0][0] = pixNorm[0][0][0] + Math<TVec>::reduceAdd(delta_val);
@@ -159,24 +172,41 @@ __global__ void nnfl2NormRowMajor(
 		}
 	      } else {
 
-
+		// features 
 		IndexType ftr = threadIdx.x % nftrs;
-		IndexType cmod = threadIdx.x / nftrs;
-		IndexType hIdx = (cmod / patchsize);
-		IndexType wIdx = (cmod % patchsize);
+		IndexType fDiv = threadIdx.x / nftrs;
 
+		// width
+		IndexType wIdx = fDiv % patchsize;
+		IndexType wDiv = fDiv / patchsize;
+
+		// height
+		IndexType hIdx = wDiv % patchsize;
+		IndexType hDiv = wDiv / patchsize;
+
+		// frame index
+		IndexType fIdx = hDiv % nframes;
+
+		// blocks
+		IndexType tRowStart = blocks[fIdx][blockStart+blk][0]+rowStartPix+row;
+		IndexType tColStart = blocks[fIdx][blockStart+blk][1]+colStartPix+col;
+
+		// legal accesses only
+		bool legalRowTgt = legal_access(tRowStart,(psSub1),0,heightPadded);
+		bool legalColTgt = legal_access(tColStart,(psSub1),0,widthPadded);
+		bool legalAccess = legalRowTgt && legalColTgt;
+
+		// image indices
 		IndexType targetRow = tRowStart + hIdx;
 		IndexType targetCol = tColStart + wIdx;
 		IndexType refRow = rowStartPix + row + hIdx;
 		IndexType refCol = colStartPix + col + wIdx;
-		  
 
-		TVec target_val = legalAccess ?
-		  target[ftr][targetRow][targetCol]
+		TVec burst_val = legalAccess ?
+		  burst[fIdx][ftr][targetRow][targetCol]
 		  : TVecMax;
-		TVec ref_val = ref[ftr][refRow][refCol];
-		TVec delta_val = Math<TVec>::sub(ref_val,target_val);
-
+		TVec ave_val = ave[ftr][blockStart+blk][refRow][refCol];
+		TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
 		delta_val = Math<TVec>::mul(delta_val,delta_val);
 		pixNorm[0][0][0] = Math<TVec>::reduceAdd(delta_val);
 	      }
@@ -231,29 +261,42 @@ __global__ void nnfl2NormRowMajor(
 #pragma unroll
 		  for (int blk = 0; blk < BlockTileSize; ++blk) {
 
-		    IndexType tRowStart = blocks[blockStart+blk][0]+rowStartPix+row;
-		    IndexType tColStart = blocks[blockStart+blk][1]+colStartPix+col;
-
-		    bool legalRowTgt = legal_access(tRowStart,(psSub1),0,heightPadded);
-		    bool legalColTgt = legal_access(tColStart,(psSub1),0,widthPadded);
-		    bool legalAccess = legalRowTgt && legalColTgt;
-
-		    IndexType ftr = txIndex % nftrs;
-		    IndexType cmod = txIndex / nftrs;
-		    IndexType hIdx = (cmod / patchsize);
-		    IndexType wIdx = (cmod % patchsize);
-
-		    IndexType targetRow = tRowStart + hIdx;
-		    IndexType targetCol = tColStart + wIdx;
-		    IndexType refRow = rowStartPix + row + hIdx;
-		    IndexType refCol = colStartPix + col + wIdx;
-
-
-		    TVec target_val = legalAccess ?
-		      target[ftr][targetRow][targetCol]
-		      : TVecMax;
-		    TVec ref_val = ref[ftr][refRow][refCol];
-		    tmp[row][col][blk] = Math<TVec>::sub(ref_val,target_val);
+    		    // features 
+    		    IndexType ftr = txIndex % nftrs;
+    		    IndexType fDiv = txIndex / nftrs;
+    		    
+    		    // width
+    		    IndexType wIdx = fDiv % patchsize;
+    		    IndexType wDiv = fDiv / patchsize;
+    		    
+    		    // height
+    		    IndexType hIdx = wDiv % patchsize;
+    		    IndexType hDiv = wDiv / patchsize;
+    		    
+    		    // frame index
+    		    IndexType fIdx = hDiv % nframes;
+    		    
+    		    // blocks
+    		    IndexType tRowStart = blocks[fIdx][blockStart+blk][0]+rowStartPix+row;
+    		    IndexType tColStart = blocks[fIdx][blockStart+blk][1]+colStartPix+col;
+    		    
+    		    // legal accesses only
+    		    bool legalRowTgt = legal_access(tRowStart,(psSub1),0,heightPadded);
+    		    bool legalColTgt = legal_access(tColStart,(psSub1),0,widthPadded);
+    		    bool legalAccess = legalRowTgt && legalColTgt;
+    		    
+    		    // image indices
+    		    IndexType targetRow = tRowStart + hIdx;
+    		    IndexType targetCol = tColStart + wIdx;
+    		    IndexType refRow = rowStartPix + row + hIdx;
+    		    IndexType refCol = colStartPix + col + wIdx;
+    		    
+		    // image indices
+    		    TVec burst_val = legalAccess ?
+    		      burst[fIdx][ftr][targetRow][targetCol]
+    		      : TVecMax;
+    		    TVec ave_val = ave[ftr][blockStart+blk][refRow][refCol];
+		    tmp[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
 		  }
 		}
 	      }
@@ -293,29 +336,42 @@ __global__ void nnfl2NormRowMajor(
 #pragma unroll
 		for (int blk = 0; blk < BlockTileSize; ++blk) {
 
-		  IndexType tRowStart = blocks[blockStart+blk][0]+rowStartPix+row;
-		  IndexType tColStart = blocks[blockStart+blk][1]+colStartPix+col;
+    		  // features 
+    		  IndexType ftr = threadIdx.x % nftrs;
+    		  IndexType fDiv = threadIdx.x / nftrs;
+    		  
+    		  // width
+    		  IndexType wIdx = fDiv % patchsize;
+    		  IndexType wDiv = fDiv / patchsize;
+    		  
+    		  // height
+    		  IndexType hIdx = wDiv % patchsize;
+    		  IndexType hDiv = wDiv / patchsize;
+    		  
+    		  // frame index
+    		  IndexType fIdx = hDiv % nframes;
+    		  
+    		  // blocks
+    		  IndexType tRowStart = blocks[fIdx][blockStart+blk][0]+rowStartPix+row;
+    		  IndexType tColStart = blocks[fIdx][blockStart+blk][1]+colStartPix+col;
+    		  
+    		  // legal accesses only
+    		  bool legalRowTgt = legal_access(tRowStart,(psSub1),0,heightPadded);
+    		  bool legalColTgt = legal_access(tColStart,(psSub1),0,widthPadded);
+    		  bool legalAccess = legalRowTgt && legalColTgt;
+    		  
+    		  // image indices
+    		  IndexType targetRow = tRowStart + hIdx;
+    		  IndexType targetCol = tColStart + wIdx;
+    		  IndexType refRow = rowStartPix + row + hIdx;
+    		  IndexType refCol = colStartPix + col + wIdx;
 
-		  bool legalRowTgt = legal_access(tRowStart,(psSub1),0,heightPadded);
-		  bool legalColTgt = legal_access(tColStart,(psSub1),0,widthPadded);
-		  bool legalAccess = legalRowTgt && legalColTgt;
-
-		  IndexType ftr = threadIdx.x % nftrs;
-		  IndexType cmod = threadIdx.x / nftrs;
-		  IndexType hIdx = (cmod / patchsize);
-		  IndexType wIdx = (cmod % patchsize);
-
-		  IndexType targetRow = tRowStart + hIdx;
-		  IndexType targetCol = tColStart + wIdx;
-		  IndexType refRow = rowStartPix + row + hIdx;
-		  IndexType refCol = colStartPix + col + wIdx;
-
-
-		  TVec target_val = legalAccess ?
-		    target[ftr][targetRow][targetCol]
+		  // image values
+		  TVec burst_val = legalAccess ?
+		    burst[fIdx][ftr][targetRow][targetCol]
 		    : TVecMax;
-		  TVec ref_val = ref[ftr][refRow][refCol];
-		  tmp[row][col][blk] = Math<TVec>::sub(ref_val,target_val);
+		  TVec ave_val = ave[ftr][blockStart+blk][refRow][refCol];
+		  tmp[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
 		}
 	      }
             }
@@ -440,10 +496,10 @@ __global__ void nnfl2NormRowMajor(
 }
 
 template <typename T, typename TVec, typename IndexType>
-void runNnfL2Norm(
-	Tensor<T, 3, true, IndexType>& ref,
-	Tensor<T, 3, true, IndexType>& target,
-        Tensor<int, 2, true, IndexType>& blocks,
+void runBurstNnfL2Norm(
+	Tensor<T, 4, true, IndexType>& burst,
+	Tensor<T, 4, true, IndexType>& ave,
+        Tensor<int, 3, true, IndexType>& blocks,
         Tensor<float, 3, true, IndexType>& vals,
 	int patchsize, int nblocks,
         bool normSquared,
@@ -453,7 +509,7 @@ void runNnfL2Norm(
     constexpr int colTileSize = 1;
     constexpr int blockTileSize = 4;
 
-#define RUN_NNF_L2_ROW_MAJOR(TYPE_T, TYPE_TVEC, REF, TARGET)			\
+#define RUN_NNF_L2_ROW_MAJOR(TYPE_T, TYPE_TVEC, BURST)			\
     do {                                                                      \
         if (normLoop) {                                                       \
             if (normSquared) {                                                \
@@ -465,7 +521,7 @@ void runNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         true,                                                 \
-		  true><<<grid, block, smem, stream>>>(REF, TARGET, blocks, vals, patchsize, nblocks, TVecMax); \
+			true><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
             } else {                                                          \
                 nnfl2NormRowMajor<                                               \
                         TYPE_T,                                               \
@@ -475,7 +531,7 @@ void runNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         true,                                                 \
-		  false><<<grid, block, smem, stream>>>(REF, TARGET, blocks, vals, patchsize, nblocks, TVecMax); \
+		  false><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
             }                                                                 \
         } else {                                                              \
             if (normSquared) {                                                \
@@ -487,7 +543,7 @@ void runNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         false,                                                \
-		true><<<grid, block, smem, stream>>>(REF, TARGET, blocks, vals, patchsize, nblocks, TVecMax); \
+		true><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
             } else {                                                          \
                 nnfl2NormRowMajor<                                               \
                         TYPE_T,                                               \
@@ -497,156 +553,93 @@ void runNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         false,                                                \
-		  false><<<grid, block, smem, stream>>>(REF, TARGET, blocks, vals, patchsize, nblocks, TVecMax); \
+		  false><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
             }                                                                 \
         }                                                                     \
     } while (0)
 
-    // std::cout << "sizeof " << sizeof(TVec) << ", "<< sizeof(T) << std::endl;
-    // auto ref_can_recast = ref.template canCastResize<TVec>();
-    // auto target_can_recast = target.template canCastResize<TVec>();
-
-    auto ref_can_recast = false;//ref.template canCastResize<TVec>();
-    auto target_can_recast = false;//target.template canCastResize<TVec>();
 
     // compute numThreads
-    int nftrs = ref.getSize(0);
-    IndexType dim = patchsize*patchsize*nftrs;
+    int nframes = burst.getSize(0);
+    int nftrs = burst.getSize(1);
+    IndexType dim = patchsize*patchsize*nftrs*nframes;
     bool normLoop = dim > maxThreads;
     IndexType numThreads = std::min(dim, maxThreads);
-    // numThreads = utils::roundUp(numThreads,kWarpSize); // round-up for warp reduce.
-
-    // compute number of Warps per kernel with size "numThreads"
     IndexType nWarps = utils::divUp(numThreads, kWarpSize);
+    // numThreads = utils::roundUp(numThreads,kWarpSize); // round-up for warp reduce.
 
     // compute number of Grids
     int height = vals.getSize(0);
     int width = vals.getSize(1);
-    int blockBatchSize = blocks.getSize(0);
+    int blockBatchSize = blocks.getSize(1);
     int numToComp = height * width * blockBatchSize;
     int numToCompPerKernel = rowTileSize * colTileSize * blockTileSize;
     int numHeightBlocks = utils::divUp(height, rowTileSize);
     int numWidthBlocks = utils::divUp(width, colTileSize);
     int numBlockBlocks = utils::divUp(blockBatchSize, blockTileSize);
     int nBlocks = utils::divUp(numToComp,numToCompPerKernel);
-    // std::cout << "numToComp " << numToComp << std::endl;
-    // std::cout << "numToCompPerKernel " << numToCompPerKernel << std::endl;
-    // std::cout << "nBlocks " << nBlocks << std::endl;
-    // std::cout << "blockBatchSize " << blockBatchSize << std::endl;
-    // std::cout << "normLoop: " << normLoop << std::endl;
-    // std::cout << "numWarps: " << nWarps << std::endl;
-    // std::cout << "NumThreads: " << numThreads << std::endl;
 
-    // std::cout << "height " << height << std::endl;
-    // std::cout << "width " << width << std::endl;
+    // get grids and threads 
+    auto grid = dim3(numHeightBlocks,numWidthBlocks,numBlockBlocks);
+    auto block = dim3(numThreads);
+    auto smem = sizeof(float) * numToCompPerKernel * nWarps;
 
-    // std::cout << "heightPadded " << target.getSize(1) << std::endl;
-    // std::cout << "widthPadded " << target.getSize(2) << std::endl;
-
-    // std::cout << "numHeightBlocks " << numHeightBlocks << std::endl;
-    // std::cout << "numWidthBlocks " << numWidthBlocks << std::endl;
-    // std::cout << "numBlockBlocks " << numBlockBlocks << std::endl;
-
-    if (ref_can_recast && target_can_recast) {
-        std::cout << "recasting!"  << std::endl;
-        // Can load using the vectorized type
-        auto refV = ref.template castResize<TVec>();
-        auto targetV = target.template castResize<TVec>();
-	// printf("ref.stride: (%ld,%ld,%ld)\n",
-	//        ref.getStride(0),ref.getStride(1),ref.getStride(2));
-	// printf("target.stride: (%ld,%ld,%ld)\n",
-	//        target.getStride(0),target.getStride(1),target.getStride(2));
-	// printf("refV.shape: (%ld,%ld,%ld)\n",
-	//        refV.getSize(0),refV.getSize(1),refV.getSize(2));
-	// printf("targetV.shape: (%ld,%ld,%ld)\n",
-	//        targetV.getSize(0),targetV.getSize(1),targetV.getSize(2));
-	// printf("refV.stride: (%ld,%ld,%ld)\n",
-	//        refV.getStride(0),refV.getStride(1),refV.getStride(2));
-	// printf("targetV.stride: (%ld,%ld,%ld)\n",
-	//        targetV.getStride(0),targetV.getStride(1),targetV.getStride(2));
-
-        // auto grid = dim3(nBlocks);
-        auto grid = dim3(numHeightBlocks,numWidthBlocks,numBlockBlocks);
-        auto block = dim3(numThreads);
-
-        auto smem = sizeof(float) * numToCompPerKernel * nWarps;
-
-	// weird convserion ... idk
-	TVec* tmpTVec;
-	float tmp[1];
-	tmp[0] = 100.;
-	tmpTVec = reinterpret_cast<TVec*>(tmp);//Limits<TVec>::getMax();
-	TVec TVecMax = tmpTVec[0];
-
-        RUN_NNF_L2_ROW_MAJOR(T, TVec, refV, targetV);
-    } else {
-        // Can't load using the vectorized type
-
-        // auto grid = dim3(nBlocks);
-        auto grid = dim3(numHeightBlocks,numWidthBlocks,numBlockBlocks);
-        auto block = dim3(numThreads);
-
-        auto smem = sizeof(float) * numToCompPerKernel * nWarps;
-
-
-	// weird convserion ... idk
-	float* tmpTVec;
-	float tmp[1];
-	tmp[0] = 100.;
-	tmpTVec = reinterpret_cast<float*>(tmp);//Limits<TVec>::getMax();
-	float TVecMax = tmpTVec[0];
-
-        RUN_NNF_L2_ROW_MAJOR(T, T, ref, target);
-    }
+    // weird convserion for me... ... idk
+    float* tmpTVec;
+    float tmp[1];
+    tmp[0] = 100.;
+    tmpTVec = reinterpret_cast<float*>(tmp);
+    float TVecMax = tmpTVec[0];
+    RUN_NNF_L2_ROW_MAJOR(T, T, burst);
 
 #undef RUN_NNF_L2
-
     CUDA_TEST_ERROR();
 }
 
-void runNnfL2Norm(
-        Tensor<float, 3, true>& ref,
-        Tensor<float, 3, true>& target,
-        Tensor<int, 2, true>& blocks,
+void runBurstNnfL2Norm(
+	Tensor<float, 4, true>& burst,
+	Tensor<float, 4, true>& ave,
+        Tensor<int, 3, true>& blocks,
         Tensor<float, 3, true>& vals,
 	int patchsize,
 	int nblocks,
         bool normSquared,
         cudaStream_t stream) {
-    if (ref.canUseIndexType<int>()) {
-        runNnfL2Norm<float, float4, int>(
-		ref, target, blocks, vals, patchsize, nblocks, normSquared, stream);
+    if (burst.canUseIndexType<int>()) {
+        runBurstNnfL2Norm<float, float4, int>(
+		burst, ave, blocks, vals, patchsize, nblocks, normSquared, stream);
     } else {
-        auto refCast = ref.castIndexType<long>();
-        auto targetCast = target.castIndexType<long>();
+        auto burstCast = burst.castIndexType<long>();
+        auto aveCast = ave.castIndexType<long>();
         auto blocksCast = blocks.castIndexType<long>();
         auto valCast = vals.castIndexType<long>();
 
-        runNnfL2Norm<float, float4, long>(
-		refCast, targetCast, blocksCast, valCast, patchsize, nblocks, normSquared, stream);
+        runBurstNnfL2Norm<float, float4, long>(
+		burstCast, aveCast, blocksCast, valCast,
+		patchsize, nblocks, normSquared, stream);
     }
 }
 
-void runNnfL2Norm(
-        Tensor<half, 3, true>& ref,
-        Tensor<half, 3, true>& target,
-        Tensor<int, 2, true>& blocks,
+void runBurstNnfL2Norm(
+	Tensor<half, 4, true>& burst,
+	Tensor<half, 4, true>& ave,
+        Tensor<int, 3, true>& blocks,
         Tensor<float, 3, true>& vals,
 	int patchsize,
 	int nblocks,
         bool normSquared,
         cudaStream_t stream) {
-    if (ref.canUseIndexType<int>()) {
-        runNnfL2Norm<half, half2, int>(
-		ref, target, blocks, vals, patchsize, nblocks, normSquared, stream);
+    if (burst.canUseIndexType<int>()) {
+        runBurstNnfL2Norm<half, half2, int>(
+		burst, ave, blocks, vals, patchsize, nblocks, normSquared, stream);
     } else {
-        auto refCast = ref.castIndexType<long>();
-        auto targetCast = target.castIndexType<long>();
+        auto burstCast = burst.castIndexType<long>();
+        auto aveCast = ave.castIndexType<long>();
         auto blocksCast = blocks.castIndexType<long>();
         auto valCast = vals.castIndexType<long>();
-
-        runNnfL2Norm<half, half2, long>(
-		refCast, targetCast, blocksCast, valCast, patchsize, nblocks, normSquared, stream);
+        runBurstNnfL2Norm<half, half2, long>(burstCast, aveCast, blocksCast,
+					     valCast, patchsize, nblocks,
+					     normSquared, stream);
     }
 }
 

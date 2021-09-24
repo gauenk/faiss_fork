@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include <faiss/gpu/GpuNnfDistance.h>
+#include <faiss/gpu/GpuBurstNnfDistance.h>
 #include <faiss/gpu/GpuResources.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
 #include <faiss/impl/FaissAssert.h>
-#include <faiss/gpu/impl/ImagePatchDistance.cuh>
+#include <faiss/gpu/impl/BurstPatchDistance.cuh>
 #include <faiss/gpu/utils/ConversionOperators.cuh>
 #include <faiss/gpu/utils/CopyUtils.cuh>
 #include <faiss/gpu/utils/DeviceTensor.cuh>
@@ -18,27 +18,28 @@ namespace faiss {
   namespace gpu {
 
     template <typename T>
-    void bfNnfConvert(GpuResourcesProvider* prov, const GpuNnfDistanceParams& args) {
+    void bfBurstNnfConvert(GpuResourcesProvider* prov,
+			   const GpuBurstNnfDistanceParams& args) {
       // Validate the input data
       // FAISS_THROW_IF_NOT_MSG(
       //         args.k > 0 || args.k == -1,
-      //         "bfNnf: k must be > 0 for top-k reduction, "
+      //         "bfBurstNnf: k must be > 0 for top-k reduction, "
       //         "or -1 for all pairwise distances");
-      // FAISS_THROW_IF_NOT_MSG(args.dims > 0, "bfNnf: dims must be > 0");
+      // FAISS_THROW_IF_NOT_MSG(args.dims > 0, "bfBurstNnf: dims must be > 0");
       // FAISS_THROW_IF_NOT_MSG(
-      //         args.numVectors > 0, "bfNnf: numVectors must be > 0");
+      //         args.numVectors > 0, "bfBurstNnf: numVectors must be > 0");
       // FAISS_THROW_IF_NOT_MSG(
-      //         args.vectors, "bfNnf: vectors must be provided (passed null)");
+      //         args.vectors, "bfBurstNnf: vectors must be provided (passed null)");
       // FAISS_THROW_IF_NOT_MSG(
-      //         args.numQueries > 0, "bfNnf: numQueries must be > 0");
+      //         args.numQueries > 0, "bfBurstNnf: numQueries must be > 0");
       // FAISS_THROW_IF_NOT_MSG(
-      //         args.queries, "bfNnf: queries must be provided (passed null)");
+      //         args.queries, "bfBurstNnf: queries must be provided (passed null)");
       FAISS_THROW_IF_NOT_MSG(
               args.outDistances,
-              "bfNnf: outDistances must be provided (passed null)");
+              "bfBurstNnf: outDistances must be provided (passed null)");
       FAISS_THROW_IF_NOT_MSG(
               args.outIndices || args.k == -1,
-              "bfNnf: outIndices must be provided (passed null)");
+              "bfBurstNnf: outIndices must be provided (passed null)");
 
       // Don't let the resources go out of scope
       // std::cout << "about to get res" << std::endl;
@@ -50,28 +51,17 @@ namespace faiss {
       // std::cout << "Got the Stream!" << std::endl;
 
       int pad = std::floor(args.ps/2) + std::floor(args.nblocks/2);
-      auto targetImg = toDeviceTemporary<T, 3>(
-					       res,
-					       device,
-					       const_cast<T*>(reinterpret_cast<const T*>
-							      (args.targetImg)),
-					       stream,
-					       {args.c,args.h+2*pad,args.w+2*pad});
-      auto refImg = toDeviceTemporary<T, 3>(
-					    res,
-					    device,
-					    const_cast<T*>(reinterpret_cast<const T*>
-							   (args.refImg)),
-					    stream,
-					    {args.c,args.h+2*pad,args.w+2*pad});
-      auto blockLabels = toDeviceTemporary<int, 2>(
+      auto burst = toDeviceTemporary<T, 4>(res,device,
+					   const_cast<T*>(reinterpret_cast<const T*>
+							  (args.burst)),
+					   stream,
+					   {args.t,args.c,args.h+2*pad,args.w+2*pad});
+      auto blockLabels = toDeviceTemporary<int, 3>(
 					    res,
 					    device,
 					    args.blockLabels,
 					    stream,
-					    {args.nblocks*args.nblocks,2});
-
-
+					    {args.t,args.nblocks*args.nblocks,2});
       auto tOutDistances = toDeviceTemporary<float, 3>(
 						       res,
 						       device,
@@ -82,22 +72,21 @@ namespace faiss {
       if (args.outIndicesType == IndicesDataType::I64) {
         // The brute-force API only supports an interface for i32 indices only,
         // so we must create an output i32 buffer then convert back
-        DeviceTensor<int, 4, true> tOutIntIndices(
-						  res,
+        DeviceTensor<int, 5, true> tOutIntIndices(res,
 						  makeTempAlloc(AllocType::Other, stream),
-						  {args.h, args.w, args.k, 2});
+						  {args.t, args.h, args.w, args.k, 2});
 
         // Since we've guaranteed that all arguments are on device, call the
         // implementation
 
-        bfNnfOnDevice<T>(
+        bfBurstNnfOnDevice<T>(
                 res,
 		device,
                 stream,
-		targetImg,
-		refImg,
+		burst,
 		blockLabels,
                 args.k,
+		args.t,
 		args.h,
 		args.w,
 		args.c,
@@ -111,43 +100,40 @@ namespace faiss {
                 args.ignoreOutDistances);
 
         // Convert and copy int indices out
-        auto tOutIndices = toDeviceTemporary<Index::idx_t, 4>(
-							      res,
-							      device,
-							      (Index::idx_t*)args.outIndices,
+        auto tOutIndices = toDeviceTemporary<Index::idx_t, 5>(res,device,
+							      (Index::idx_t*)
+							      args.outIndices,
 							      stream,
-							      {args.h, args.w, args.k, 2});
+							      {args.t, args.h, args.w,
+								 args.k, 2});
 
         // Convert int to idx_t
-        convertTensor<int, Index::idx_t, 4>(
-					    stream, tOutIntIndices, tOutIndices);
+        convertTensor<int, Index::idx_t, 5>(stream, tOutIntIndices, tOutIndices);
 
         // Copy back if necessary
-        fromDevice<Index::idx_t, 4>(
-				    tOutIndices, (Index::idx_t*)args.outIndices, stream);
+        fromDevice<Index::idx_t, 5>(tOutIndices, (Index::idx_t*)args.outIndices, stream);
 
       } else if (args.outIndicesType == IndicesDataType::I32) {
         // We can use the brute-force API directly, as it takes i32 indices
         // FIXME: convert to int32_t everywhere?
         static_assert(sizeof(int) == 4, "");
 
-        auto tOutIntIndices = toDeviceTemporary<int, 4>(
-							res,
-							device,
+        auto tOutIntIndices = toDeviceTemporary<int, 5>(res,device,
 							(int*)args.outIndices,
 							stream,
-							{args.h, args.w, args.k, 2});
+							{args.t, args.h,
+							 args.w, args.k, 2});
 
         // Since we've guaranteed that all arguments are on device, call the
         // implementation
-        bfNnfOnDevice<T>(
+        bfBurstNnfOnDevice<T>(
                 res,
 		device,
                 stream,
-		targetImg,
-		refImg,
+		burst,
 		blockLabels,
                 args.k,
+		args.t,
                 args.h,
                 args.w,
                 args.c,
@@ -161,7 +147,7 @@ namespace faiss {
                 args.ignoreOutDistances);
 
         // Copy back if necessary
-        fromDevice<int, 4>(tOutIntIndices, (int*)args.outIndices, stream);
+        fromDevice<int, 5>(tOutIntIndices, (int*)args.outIndices, stream);
       } else {
         FAISS_THROW_MSG("unknown outIndicesType");
       }
@@ -170,13 +156,13 @@ namespace faiss {
       fromDevice<float, 3>(tOutDistances, args.outDistances, stream);
     }
 
-    void bfNnf(GpuResourcesProvider* res, const GpuNnfDistanceParams& args) {
+    void bfBurstNnf(GpuResourcesProvider* res, const GpuBurstNnfDistanceParams& args) {
       // For now, both vectors and queries must be of the same data type
 
       if (args.dType == DistanceDataType::F32) {
-	bfNnfConvert<float>(res, args);
+	bfBurstNnfConvert<float>(res, args);
       } else if (args.dType == DistanceDataType::F16) {
-      	bfNnfConvert<half>(res, args);
+      	bfBurstNnfConvert<half>(res, args);
       } else {
         FAISS_THROW_MSG("unknown vectorType");
       }

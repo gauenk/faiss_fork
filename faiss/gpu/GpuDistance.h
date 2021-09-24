@@ -13,18 +13,6 @@
 namespace faiss {
 namespace gpu {
 
-  // Scalar type of the vector data
-  enum class DistanceDataType {
-    F32 = 1,
-      F16,
-      };
-
-  // Scalar type of the indices data
-  enum class IndicesDataType {
-    I64 = 1,
-      I32,
-      };
-
 /// Arguments to brute-force GPU k-nearest neighbor searching
 struct GpuDistanceParams {
     GpuDistanceParams()

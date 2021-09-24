@@ -57,14 +57,15 @@ def pad_numpy(ndarray,pads):
 # h,w,c = 32,32,3
 # h,w,c = 16,16,3
 # h,w,c = 17,17,3
+h,w,c = 512,512,3
 # h,w,c = 256,256,3
-h,w,c = 32,32,3
+# h,w,c = 32,32,3
 # h,w,c = 48,48,3
 # h,w,c = 32,32,3
 # h,w,c = 1024,1024,3
 # h,w,c = 32,32,3
 # ps,nblocks = 11,10
-ps,nblocks = 3,9
+ps,nblocks = 3,3
 k = 2
 pad = int(ps//2)+int(nblocks//2)
 pads = (pad,pad,pad,pad)
@@ -120,6 +121,8 @@ nnf_target = torch.Tensor(np.copy(np.array(nnf_target)))
 # pad = ps//2 + nblocks
 nnf_ref = nnf_ref[:,pad:-pad,pad:-pad]
 nnf_target = nnf_target[:,pad:-pad,pad:-pad]
+nnf_vals,nnf_locs = nnf.compute_nnf(nnf_ref,nnf_target,ps,K=k,gpuid=0)
+time.sleep(3)
 start_time = time.perf_counter()
 nnf_vals,nnf_locs = nnf.compute_nnf(nnf_ref,nnf_target,ps,K=k,gpuid=0)
 nnf_runtime = time.perf_counter() - start_time

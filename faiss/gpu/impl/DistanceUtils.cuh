@@ -364,6 +364,7 @@ inline void chooseImageTileSize(
     // prefer 768 MB of usage. Otherwise, prefer 1 GB of usage.
     auto totalMem = getCurrentDeviceProperties().totalGlobalMem;
 
+    int nblocks2 = nblocks*nblocks;
     int targetUsage = 0;
 
     if (totalMem <= ((size_t)4) * 1024 * 1024 * 1024) {
@@ -392,21 +393,23 @@ inline void chooseImageTileSize(
     auto numOptsPerCudaBlock = patchsize*patchsize*nftrs;
     int preferredTileBlocks;
     if (numOptsPerCudaBlock <= 32){
-      preferredTileBlocks = nblocks*nblocks; // all in one batch.
-    }else if ( numOptsPerCudaBlock <= 1024){
-      preferredTileBlocks = 256;
+      preferredTileBlocks = nblocks2; // all in one batch.
+    }else if ( numOptsPerCudaBlock <= 512){
+      preferredTileBlocks = std::min(nblocks2,64);
     } else if ( numOptsPerCudaBlock <= 1024){
-      preferredTileBlocks = 64;
+      preferredTileBlocks = std::min(nblocks2,32);
     } else{
-      preferredTileBlocks = 16;
+      preferredTileBlocks = std::min(nblocks2,16);
     }
+    preferredTileBlocks = std::min(preferredTileBlocks,nblocks2);
 
-    int currUsage = numOptsPerCudaBlock * preferredTileBlocks;
-    int remainingUseage = (targetUsage + currUsage - 1) / currUsage;
+    // tileCols is the remainder size
+    int currUsage = preferredTileBlocks*numOptsPerCudaBlock;
+    int remainingUseage = targetUsage / currUsage;
     int tilePix = std::min(remainingUseage, npix);
     int sqrtTilePix = (int)std::floor(std::sqrt(tilePix*1.0));
-    tileHeight = sqrtTilePix;
-    tileWidth = sqrtTilePix;
+    tileHeight = std::min(sqrtTilePix,16);
+    tileWidth = std::min(sqrtTilePix,16);
     tileBlocks = preferredTileBlocks;
 }
 

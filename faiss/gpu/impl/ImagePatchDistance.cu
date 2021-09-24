@@ -38,7 +38,7 @@ void runImagePatchDistance(
         cudaStream_t stream,
         Tensor<T, 3, true>& targetImg,
         Tensor<T, 3, true>& refImg,
-        Tensor<int, 2, true> blockLabels,
+        Tensor<int, 2, true>& blockLabels,
         int k,
         int h,
         int w,
@@ -50,14 +50,14 @@ void runImagePatchDistance(
         Tensor<int, 4, true>& outIndices,
 	bool computeL2) {
 
-    std::cout << "hey yo!." << std::endl;
+    // std::cout << "hey yo!." << std::endl;
     // Size of proposed image 
     auto nftrsRef = refImg.getSize(0);
     auto heightPadRef = refImg.getSize(1);
     auto widthPadRef = refImg.getSize(2);
     // auto npix = height * width;
-    fprintf(stdout,"nftrs: %d | height: %d | width: %d\n",
-	    nftrsRef,heightPadRef,widthPadRef);
+    // fprintf(stdout,"nftrs: %d | height: %d | width: %d\n",
+    // 	    nftrsRef,heightPadRef,widthPadRef);
     auto nftrs = refImg.getSize(0);
     int nblocks2 = nblocks*nblocks;
     int pad = std::floor(patchsize/2) + std::floor(nblocks/2);
@@ -67,8 +67,8 @@ void runImagePatchDistance(
     auto nftrsTgt = targetImg.getSize(0);
     auto heightPadTgt = targetImg.getSize(1);
     auto widthPadTgt = targetImg.getSize(2);
-    fprintf(stdout,"height: %d | width: %d | nftrs: %d\n",
-	    heightPadTgt,widthPadTgt,nftrsTgt);
+    // fprintf(stdout,"height: %d | width: %d | nftrs: %d\n",
+    // 	    heightPadTgt,widthPadTgt,nftrsTgt);
 
     // Size of vals image
     auto height = outDistances.getSize(0);
@@ -145,11 +145,11 @@ void runImagePatchDistance(
     int numHeightTiles = utils::divUp(height, tileHeight);
     int numWidthTiles = utils::divUp(width, tileWidth);
     int numBlockTiles = utils::divUp((nblocks*nblocks), tileBlocks);
-    fprintf(stdout,"patchsize: %d | nblocks: %d | k: %d\n",patchsize,nblocks,k);
-    fprintf(stdout,"tileHeight: %d | tileWidth: %d | tileBlocks: %d\n",
-	    tileHeight,tileWidth,tileBlocks);
-    fprintf(stdout,"numHeightTiles: %d | numWidthTiles: %d | numBlockTiles: %d\n",
-	    numHeightTiles,numWidthTiles,numBlockTiles);
+    // fprintf(stdout,"patchsize: %d | nblocks: %d | k: %d\n",patchsize,nblocks,k);
+    // fprintf(stdout,"tileHeight: %d | tileWidth: %d | tileBlocks: %d\n",
+    // 	    tileHeight,tileWidth,tileBlocks);
+    // fprintf(stdout,"numHeightTiles: %d | numWidthTiles: %d | numBlockTiles: %d\n",
+    // 	    numHeightTiles,numWidthTiles,numBlockTiles);
 
     // We can have any number of vectors to query against, even less than k, in
     // which case we'll return -1 for the index
@@ -164,9 +164,95 @@ void runImagePatchDistance(
     	res,
     	makeTempAlloc(AllocType::Other, stream),
     	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel3(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel4(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel5(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel6(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel7(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel8(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel9(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel10(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel11(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel12(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel13(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel14(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel15(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+    DeviceTensor<int, 2, true> blockLabel16(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{nblocks*nblocks,2});
+
     blockLabel1.copyFrom(blockLabels,stream);
     blockLabel2.copyFrom(blockLabels,stream);
-    DeviceTensor<int, 2, true>* blockLabelsList[2] = {&blockLabel1, &blockLabel2};
+    blockLabel3.copyFrom(blockLabels,stream);
+    blockLabel4.copyFrom(blockLabels,stream);
+    blockLabel5.copyFrom(blockLabels,stream);
+    blockLabel6.copyFrom(blockLabels,stream);
+    blockLabel7.copyFrom(blockLabels,stream);
+    blockLabel8.copyFrom(blockLabels,stream);
+    blockLabel9.copyFrom(blockLabels,stream);
+    blockLabel10.copyFrom(blockLabels,stream);
+    blockLabel11.copyFrom(blockLabels,stream);
+    blockLabel12.copyFrom(blockLabels,stream);
+    blockLabel13.copyFrom(blockLabels,stream);
+    blockLabel14.copyFrom(blockLabels,stream);
+    blockLabel15.copyFrom(blockLabels,stream);
+    blockLabel16.copyFrom(blockLabels,stream);
+    DeviceTensor<int, 2, true>* blockLabelsList[16] = {&blockLabel1,
+						      &blockLabel2,
+						      &blockLabel3,
+						      &blockLabel4,
+						      &blockLabel5,
+						      &blockLabel6,
+						      &blockLabel7,
+						      &blockLabel8,
+						      &blockLabel9,
+						      &blockLabel10,
+						      &blockLabel11,
+						      &blockLabel12,
+						      &blockLabel13,
+						      &blockLabel14,
+						      &blockLabel15,
+						      &blockLabel16};
 
     //
     // Temporary memory space to *execute* a single batch
@@ -179,7 +265,78 @@ void runImagePatchDistance(
     	res,
     	makeTempAlloc(AllocType::Other, stream),
     	{tileHeight, tileWidth, tileBlocks});
-    DeviceTensor<float, 3, true>* distanceBufs[2] = {&distanceBuf1, &distanceBuf2};
+    DeviceTensor<float, 3, true> distanceBuf3(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf4(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf5(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf6(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf7(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf8(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf9(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf10(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf11(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf12(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf13(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf14(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf15(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true> distanceBuf16(
+    	res,
+    	makeTempAlloc(AllocType::Other, stream),
+    	{tileHeight, tileWidth, tileBlocks});
+    DeviceTensor<float, 3, true>* distanceBufs[16] = {&distanceBuf1,
+						     &distanceBuf2,
+						     &distanceBuf3,
+						     &distanceBuf4,
+						     &distanceBuf5,
+						     &distanceBuf6,
+						     &distanceBuf7,
+						     &distanceBuf8,
+						     &distanceBuf9,
+						     &distanceBuf10,
+						     &distanceBuf11,
+						     &distanceBuf12,
+						     &distanceBuf13,
+						     &distanceBuf14,
+						     &distanceBuf15,
+						     &distanceBuf16};
 
     // Temporary memory to *accumulate* current topK output from kernel executions.
     //
@@ -389,7 +546,8 @@ void runImagePatchDistance(
 	    // 			    outIndexView, 0.,
 	    // 			    true,k,streams[curStream]);
 
-            curStream = (curStream + 1) % 2;
+	    // std::cout << "updated streams." << std::endl;
+            curStream = (curStream + 1) % 16;
 
         } // batching over widthTiles
 
@@ -409,7 +567,7 @@ void runImagePatchDistance(
         cudaStream_t stream,
         Tensor<float, 3, true>& targetImg,
         Tensor<float, 3, true>& refImg,
-        Tensor<int, 2, true> blockLabels,
+        Tensor<int, 2, true>& blockLabels,
         int k,
         int h,
         int w,
@@ -439,7 +597,7 @@ void runImagePatchDistance(
         cudaStream_t stream,
         Tensor<half, 3, true>& targetImg,
         Tensor<half, 3, true>& refImg,
-        Tensor<int, 2, true> blockLabels,
+        Tensor<int, 2, true>& blockLabels,
         int k,
         int h,
         int w,

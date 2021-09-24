@@ -13,38 +13,27 @@
 namespace faiss {
 namespace gpu {
 
-  // // Scalar type of the vector data
-  // enum class DistanceDataTypeNnf {
-  //   F32 = 1,
-  //     F16,
-  //     };
-
-  // // Scalar type of the indices data
-  // enum class IndicesDataTypeNnf {
-  //   I64 = 1,
-  //     I32,
-  //     };
 
 /// Arguments to brute-force GPU k-nearest neighbor searching
-struct GpuNnfDistanceParams {
-    GpuNnfDistanceParams()
+struct GpuBurstNnfDistanceParams {
+    GpuBurstNnfDistanceParams()
             : metric(faiss::MetricType::METRIC_L2),
               metricArg(0),
               k(0),
+              t(0),
               h(0),
               w(0),
               c(0),
               ps(0),
               nblocks(0),
               valMean(0),
+              burst(nullptr),
               dType(DistanceDataType::F32),
-              targetImg(nullptr),
-              refImg(nullptr),
 	      blockLabels(nullptr),
               outDistances(nullptr),
-              ignoreOutDistances(false),
+	      outIndices(nullptr),
               outIndicesType(IndicesDataType::I64),
-              outIndices(nullptr) {}
+              ignoreOutDistances(false) {}
 
 
     //
@@ -64,6 +53,7 @@ struct GpuNnfDistanceParams {
     int k;
 
     /// image dims
+    int t; // nframes
     int h; // height
     int w; // width
     int c; // color
@@ -79,17 +69,7 @@ struct GpuNnfDistanceParams {
     /// If vectorsRowMajor is true, this is
     /// numVectors x dims, with dims innermost; otherwise,
     /// dims x numVectors, with numVectors innermost
-    const void* targetImg;
-
-    //
-    // The query vectors (i.e., find k-nearest neighbors in `vectors` for each
-    // of the `queries`
-    //
-
-    /// If queriesRowMajor is true, this is
-    /// numQueries x dims, with dims innermost; otherwise,
-    /// dims x numQueries, with numQueries innermost
-    const void* refImg;
+    const void* burst;
 
     /// Block labels used to indexing inside of cuda kerenl. Yes, we could have
     /// just done this in c++ but python is much simpler
@@ -127,7 +107,9 @@ struct GpuNnfDistanceParams {
 /// For each vector in `queries`, searches all of `vectors` to find its k
 /// nearest neighbors with respect to the given metric
 
-void bfNnf(GpuResourcesProvider* resources, const GpuNnfDistanceParams& args);
+void bfBurstNnf(GpuResourcesProvider* resources,
+		const GpuBurstNnfDistanceParams& args);
 
 }
 }
+

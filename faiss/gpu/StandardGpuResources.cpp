@@ -19,7 +19,7 @@ namespace gpu {
 namespace {
 
 // How many streams per device we allocate by default (for multi-streaming)
-constexpr int kNumStreams = 2;
+constexpr int kNumStreams = 16;
 
 // Use 256 MiB of pinned memory for async CPU <-> GPU copies by default
 constexpr size_t kDefaultPinnedMemoryAllocation = (size_t)256 * 1024 * 1024;
@@ -313,7 +313,6 @@ void StandardGpuResourcesImpl::initializeForDevice(int device) {
             "Device id %d does not have expected warpSize of 32",
             device);
 
-    std::cout << "streams!." << std::endl;
     // Create streams
     cudaStream_t defaultStream = 0;
     CUDA_VERIFY(

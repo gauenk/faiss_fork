@@ -16,13 +16,13 @@ namespace gpu {
 
 class GpuResources;
 
-void runImagePatchDistance(
+void runBurstPatchDistance(
         GpuResources* res,
         cudaStream_t stream,
-        Tensor<float, 3, true>& targetImg,
-        Tensor<float, 3, true>& refImg,
-        Tensor<int, 2, true>& blockLabels,
+        Tensor<float, 4, true>& burst,
+        Tensor<int, 3, true>& blockLabels,
         int k,
+        int t,
 	int h,
 	int w,
 	int c,
@@ -30,16 +30,16 @@ void runImagePatchDistance(
 	int nblocks,
 	float valMean,
         Tensor<float, 3, true>& outDistances,
-        Tensor<int, 4, true>& outIndices,
+        Tensor<int, 5, true>& outIndices,
 	bool computeL2);
 
-void runImagePatchDistance(
+void runBurstPatchDistance(
         GpuResources* res,
         cudaStream_t stream,
-        Tensor<half, 3, true>& targetImg,
-        Tensor<half, 3, true>& refImg,
-        Tensor<int, 2, true>& blockLabels,
+        Tensor<half, 4, true>& burst,
+        Tensor<int, 3, true>& blockLabels,
         int k,
+        int t,
 	int h,
 	int w,
 	int c,
@@ -47,18 +47,18 @@ void runImagePatchDistance(
 	int nblocks,
 	float valMean,
         Tensor<float, 3, true>& outDistances,
-        Tensor<int, 4, true>& outIndices,
+        Tensor<int, 5, true>& outIndices,
 	bool computeL2);
 
 template <typename T>
-void bfNnfOnDevice(
+void bfBurstNnfOnDevice(
         GpuResources* resources,
         int device,
         cudaStream_t stream,
-        Tensor<T, 3, true>& targetImg,
-        Tensor<T, 3, true>& refImg,
-        Tensor<int, 2, true>& blockLabels,
+        Tensor<T, 4, true>& burst,
+        Tensor<int, 3, true>& blockLabels,
         int k,
+	int t,
 	int h,
 	int w,
 	int c,
@@ -68,7 +68,7 @@ void bfNnfOnDevice(
         faiss::MetricType metric,
         float metricArg,
         Tensor<float, 3, true>& outDistances,
-        Tensor<int, 4, true>& outIndices,
+        Tensor<int, 5, true>& outIndices,
         bool ignoreOutDistances) {
     DeviceScope ds(device);
     // We are guaranteed that all data arguments are resident on our preferred
@@ -79,23 +79,22 @@ void bfNnfOnDevice(
     if ((metric == faiss::MetricType::METRIC_L2) ||
         (metric == faiss::MetricType::METRIC_Lp && metricArg == 2)) {
 
-      // runImagePatchDistance(static_cast<T>(1.0));
+      // runBurstPatchDistance(static_cast<T>(1.0));
                 // k,h,w,c,ps,
 		// ~ignoreOutDistances);
 
-        runImagePatchDistance(
+        runBurstPatchDistance(
                 resources,
                 stream,
-		targetImg,
-		refImg,
+		burst,
 		blockLabels,
-                k,h,w,c,ps,
+                k,t,h,w,c,ps,
 		nblocks,valMean,
                 outDistances,
                 outIndices,
 		~ignoreOutDistances);
     }else{
-            FAISS_THROW_FMT("[ImagePatchDistance]: unimplemented metric type %d", metric);
+            FAISS_THROW_FMT("[BurstPatchDistance]: unimplemented metric type %d", metric);
     }
 }
 
