@@ -39,6 +39,13 @@ def torch2swig(tensor):
 
 #---------------------------------
 #    
+#  Simulate Chi^2 to Approx Mode
+#    
+#---------------------------------
+
+
+#---------------------------------
+#    
 #      Pad the Image
 #    
 #---------------------------------
@@ -112,6 +119,23 @@ def padImage(img,img_shape,patchsize,nblocks):
 #    
 #---------------------------------
 
+def create_meshgrid_blockLabels(blockLabels,nframes):
+    nblocks2 = blockLabels.shape[0]
+    coord_1d = np.arange(nblocks2)
+    to_mesh = [coord_1d,]*nframes
+    to_mesh[nframes//2] = [[nblocks2//2]]
+    mesh = np.stack(np.meshgrid(*to_mesh)).reshape((nframes,-1))
+    blockLabelsMesh = []
+    for idx in range(mesh.shape[1]):
+        mesh_i = mesh[:,idx]
+        labels_i = []
+        for t in range(nframes):
+            label = blockLabels[mesh_i[t]]
+            labels_i.append(label)
+        blockLabelsMesh.append(labels_i)
+    blockLabelsMesh = np.stack(blockLabelsMesh,axis=1)
+    return blockLabelsMesh
+
 def getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t=None):
     blockLabels = getBlockLabelsNumpy(blockLabels,nblocks,dtype,t)
     blockLabels = flip_array_like(blockLabels,1)
@@ -135,8 +159,9 @@ def getBlockLabelsNumpy(blockLabels,nblocks,dtype,t=None):
             blockLabels[i,0] = x
             blockLabels[i,1] = y
         blockLabels -= nblocks//2
-    if not(t is None):
-        blockLabels = repeat(blockLabels,'b two -> t b two',t=t)
+        if not(t is None):
+            blockLabels = create_meshgrid_blockLabels(blockLabels,t)
+            # blockLabels = repeat(blockLabels,'b two -> t b two',t=t)
     if isinstance(blockLabels,np.ndarray):
         return blockLabels.astype(np.int32)
     elif torch.is_tensor(blockLabels):
@@ -163,7 +188,8 @@ def getValsTensor(vals,h,w,k,device,t=None):
 
     # -- create or assert --
     if vals is None:
-        vals = torch.empty(*shape, device=device, dtype=torch.float32)
+        vals = torch.ones(*shape, device=device, dtype=torch.float32)
+        vals *= torch.finfo(torch.float32).max
     else:
         assert vals.shape == shape
         # interface takes void*, we need to check this
@@ -179,7 +205,8 @@ def getValsNumpy(vals,h,w,k,t=None):
 
     # -- create or assert --
     if vals is None:
-        vals = np.empty(shape, dtype=np.float32)
+        vals = np.ones(shape, dtype=np.float32)
+        vals *= np.finfo(np.float32).max
     else:
         assert vals.shape == shape
         # interface takes void*, we need to check this

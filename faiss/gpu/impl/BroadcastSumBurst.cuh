@@ -17,12 +17,16 @@ void runBurstAverage(
 	Tensor<float, 4, true>& burst,
         Tensor<int, 3, true>& blocks,
 	Tensor<float, 4, true>& ave,
+	int patchsize,
+	int nblocks,
         cudaStream_t stream);
 
 void runBurstAverage(
 	Tensor<half, 4, true>& burst,
         Tensor<int, 3, true>& blocks,
 	Tensor<half, 4, true>& ave,
+	int patchsize,
+	int nblocks,
         cudaStream_t stream);
 
 } // namespace gpu

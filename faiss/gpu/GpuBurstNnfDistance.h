@@ -26,6 +26,7 @@ struct GpuBurstNnfDistanceParams {
               c(0),
               ps(0),
               nblocks(0),
+              nblocks_total(0),
               valMean(0),
               burst(nullptr),
               dType(DistanceDataType::F32),
@@ -59,6 +60,7 @@ struct GpuBurstNnfDistanceParams {
     int c; // color
     int ps; // patchsize radius on one direction
     int nblocks; // number of blocks to search in one direction
+    int nblocks_total; // number of combo blocks in total; (nblocks**2)**(nframes-1)
     float valMean;
     DistanceDataType dType;// data type of pixels
 

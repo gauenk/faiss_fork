@@ -61,7 +61,7 @@ namespace faiss {
 					    device,
 					    args.blockLabels,
 					    stream,
-					    {args.t,args.nblocks*args.nblocks,2});
+					    {args.t,args.nblocks_total,2});
       auto tOutDistances = toDeviceTemporary<float, 3>(
 						       res,
 						       device,

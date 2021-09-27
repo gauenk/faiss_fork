@@ -26,19 +26,27 @@ template <typename T,
 __global__ void averageForEachBlock(
 	Tensor<T, 4, true> burst,
 	Tensor<int, 3, true> blocks,
-        Tensor<T, 4, true> ave) {
+        Tensor<T, 4, true> ave,
+	int patchsize,
+	int nblocks) {
 
     // shapes 
     int nframes = burst.getSize(0); 
     int nftrs = ave.getSize(0);
-    int nblocks = ave.getSize(1);
+    int blockBatchSize = ave.getSize(1);
     int height = ave.getSize(2);
     int width = ave.getSize(3);
+    int heightPad = burst.getSize(2);
+    int widthPad = burst.getSize(3);
+    int nbHalf = nblocks/2;
+    int psHalf = patchsize/2;
 
     // block indices
-    int ftrStart = blockIdx.x;
-    int rowStart = blockIdx.y;
-    int colStart = blockIdx.z;
+    int ftrStart = FtrTileSize*(blockIdx.x);
+    int rowStart = RowTileSize*(blockIdx.y);
+    int colStart = ColTileSize*(blockIdx.z);
+    int rowStartBurst = rowStart + nbHalf;// + psHalf;
+    int colStartBurst = colStart + nbHalf;// + psHalf;
 
     // determine if our batchsize is too big for the location;
     bool lastFtrTile = (ftrStart + FtrTileSize - 1) >= ave.getSize(0);
@@ -47,6 +55,19 @@ __global__ void averageForEachBlock(
     bool lastTile = lastFtrTile || lastRowTile || lastColTile;
     float inv_nframes = 1. / (nframes*1.0);
     float sum[FtrTileSize][RowTileSize][ColTileSize];
+    // printf("(rowStart, colStart): (%d,%d)\n",rowStart,colStart);
+    // if ((rowStart == 16 ) && (colStart == 16)){
+    // 	printf("pix 16,16!\n");
+    // }
+    // if ((rowStart == 25 ) && (colStart == 25)){
+    // 	printf("pix 25,25!\n");
+    // }
+    // if ((rowStart == 28 ) && (colStart == 28)){
+    // 	printf("pix 28,28!\n");
+    // }
+    // if ((rowStart == 31 ) && (colStart == 31)){
+    // 	printf("pix 31,31!\n");
+    // }
     
     if (lastTile) { // our batchsizes are too big for the start location
 
@@ -65,40 +86,48 @@ __global__ void averageForEachBlock(
 	      if (NormLoop) {
 
 		for (int blkIndex = threadIdx.x;
-		     blkIndex < nblocks;
+		     blkIndex < blockBatchSize;
 		     blkIndex += blockDim.x) {
-		  for (int tidx = 0; tidx < nframes; ++tidx){
-		    int b_row = blocks[tidx][blkIndex][0]+row;
-		    int b_col = blocks[tidx][blkIndex][0]+col;
 
-		    T b_val = burst[tidx][ftr][b_row][b_col];
+		  int ftrIndex = ftrStart+ftr;
+		  int a_row = rowStart+row;
+		  int a_col = colStart+col;
+
+		  for (int tidx = 0; tidx < nframes; ++tidx){
+		    int b_row = rowStartBurst+blocks[tidx][blkIndex][0]+row;
+		    int b_col = colStartBurst+blocks[tidx][blkIndex][1]+col;
+
+		    T b_val = burst[tidx][ftrIndex][b_row][b_col];
 		    T s_val = sum[0][0][0];
 		    sum[0][0][0] = Math<float>::add(b_val,s_val);
 		  }
-		  ave[ftr][blkIndex][row][col] = Math<float>::mul(sum[0][0][0],
-								  inv_nframes);
+		  ave[ftrIndex][blkIndex][a_row][a_col]
+		    = Math<float>::mul(sum[0][0][0],inv_nframes);
 		}
+
 	      }else {
 		  
-		  for (int tidx = 0; tidx < nframes; ++tidx){
+		int ftrIndex = ftrStart+ftr;
+		int a_row = rowStart+row;
+		int a_col = colStart+col;
 
-		    int b_row = blocks[tidx][threadIdx.x][0]+row;
-		    int b_col = blocks[tidx][threadIdx.x][0]+col;
+		for (int tidx = 0; tidx < nframes; ++tidx){
 
-		    T b_val = burst[tidx][ftr][b_row][b_col];
-		    T s_val = sum[0][0][0];
-		    sum[0][0][0] = Math<float>::add(b_val,s_val);
-		  }
-		  ave[ftr][threadIdx.x][row][col] = Math<float>::mul(sum[0][0][0],
-								     inv_nframes);
+		  int b_row = rowStartBurst+blocks[tidx][threadIdx.x][0]+row;
+		  int b_col = colStartBurst+blocks[tidx][threadIdx.x][1]+col;
+
+		  T b_val = burst[tidx][ftrIndex][b_row][b_col];
+		  T s_val = sum[0][0][0];
+		  sum[0][0][0] = Math<float>::add(b_val,s_val);
 		}
+		ave[ftrIndex][threadIdx.x][a_row][a_col]
+		  = Math<float>::mul(sum[0][0][0],inv_nframes);
+	      }
 	      }
 	    }
 	  }
     } else {
       
-      if (NormLoop) {
-
 #pragma unroll
 	for (int row = 0; row < RowTileSize; ++row) {
 #pragma unroll
@@ -110,7 +139,9 @@ __global__ void averageForEachBlock(
 	  }
 	}
 
-	for (int blk = threadIdx.x; blk < nblocks; blk += blockDim.x) {
+      if (NormLoop) {
+
+	for (int blk = threadIdx.x; blk < blockBatchSize; blk += blockDim.x) {
 	  for (int tidx = 0; tidx < nframes; ++tidx){
 #pragma unroll
 	    for (int row = 0; row < RowTileSize; ++row) {
@@ -118,10 +149,12 @@ __global__ void averageForEachBlock(
 	      for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 		for (int ftr = 0; ftr < FtrTileSize; ++ftr) {
-		  int b_row = blocks[tidx][blk][0]+row;
-		  int b_col = blocks[tidx][blk][0]+col;
 
-		  T b_val = burst[tidx][ftr][b_row][b_col];
+		  int b_ftr = ftrStart+ftr;
+		  int b_row = rowStartBurst+blocks[tidx][blk][0]+row;
+		  int b_col = colStartBurst+blocks[tidx][blk][1]+col;
+
+		  T b_val = burst[tidx][b_ftr][b_row][b_col];
 		  T s_val = sum[ftr][row][col];
 		  sum[ftr][row][col] = Math<float>::add(b_val,s_val);
 		}
@@ -134,8 +167,12 @@ __global__ void averageForEachBlock(
 	      for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 		for (int ftr = 0; ftr < FtrTileSize; ++ftr) {
-		  ave[ftr][blk][row][col] = Math<float>::mul(sum[ftr][row][col],
-							     inv_nframes);
+		  int a_ftr = ftrStart + ftr;
+		  int a_row = rowStart + row;
+		  int a_col = colStart + col;
+
+		  ave[a_ftr][blk][a_row][a_col]
+		    = Math<float>::mul(sum[ftr][row][col],inv_nframes);
 		}
 	      }
 	    }
@@ -152,10 +189,10 @@ __global__ void averageForEachBlock(
 	    for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 	      for (int ftr = 0; ftr < FtrTileSize; ++ftr) {
-		int b_row = blocks[tidx][threadIdx.x][0]+row;
-		int b_col = blocks[tidx][threadIdx.x][0]+col;
-
-		T b_val = burst[tidx][ftr][b_row][b_col];
+		int b_ftr = ftrStart+ftr;
+		int b_row = rowStartBurst+blocks[tidx][threadIdx.x][0]+row;
+		int b_col = colStartBurst+blocks[tidx][threadIdx.x][1]+col;
+		T b_val = burst[tidx][b_ftr][b_row][b_col];
 		T s_val = sum[ftr][row][col];
 		sum[ftr][row][col] = Math<float>::add(b_val,s_val);
 	      }
@@ -163,16 +200,19 @@ __global__ void averageForEachBlock(
 	  }
 	}
 #pragma unroll
-	  for (int row = 0; row < RowTileSize; ++row) {
+	for (int row = 0; row < RowTileSize; ++row) {
 #pragma unroll
-	    for (int col = 0; col < ColTileSize; ++col) {
+	  for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
-	      for (int ftr = 0; ftr < FtrTileSize; ++ftr) {
-		ave[ftr][threadIdx.x][row][col] = Math<float>::mul(sum[ftr][row][col],
-								     inv_nframes);
-	      }
+	    for (int ftr = 0; ftr < FtrTileSize; ++ftr) {
+	      int a_ftr = ftrStart + ftr;
+	      int a_row = rowStart + row;
+	      int a_col = colStart + col;
+	      ave[a_ftr][threadIdx.x][a_row][a_col]
+		= Math<float>::mul(sum[ftr][row][col],inv_nframes);
 	    }
 	  }
+	}
       }
     }
 }
@@ -182,31 +222,38 @@ void runBurstAverage(
 	Tensor<T, 4, true>& burst,
         Tensor<int, 3, true>& blocks,
 	Tensor<T, 4, true>& ave,
+	int patchsize,
+	int nblocks,
         cudaStream_t stream) {
 
     // size checking
     FAISS_ASSERT(burst.getSize(0) == blocks.getSize(0)); // nframes
     FAISS_ASSERT(burst.getSize(1) == ave.getSize(0)); // nftrs
-    FAISS_ASSERT(burst.getSize(2) == ave.getSize(2)); // height
-    FAISS_ASSERT(burst.getSize(3) == ave.getSize(3)); // width
+    // FAISS_ASSERT(burst.getSize(2) == ave.getSize(2)); // height
+    // FAISS_ASSERT(burst.getSize(3) == ave.getSize(3)); // width
     FAISS_ASSERT(ave.getSize(1) == blocks.getSize(1)); // nblocks
     FAISS_ASSERT(blocks.getSize(2) == 2); // (x,y)
 
     // constants
-    constexpr int FtrTileSize = 2;
-    constexpr int RowTileSize = 2;
-    constexpr int ColTileSize = 2;
+    constexpr int FtrTileSize = 1;
+    constexpr int RowTileSize = 1;
+    constexpr int ColTileSize = 1;
 
     // shapes 
-    int nblocks = blocks.getSize(1);
+    int blockBatchSize = blocks.getSize(1);
     int nframes = burst.getSize(0);
-    int nftrs = burst.getSize(1);
-    int height = burst.getSize(2);
-    int width = burst.getSize(3);
+    int heightB = burst.getSize(2);
+    int widthB = burst.getSize(3);
+    int nftrs = ave.getSize(0);
+    int height = ave.getSize(2);
+    int width = ave.getSize(3);
 
+    // printf("(nftrs, height, width): (%d, %d, %d)\n",nftrs,height,width);
+    // printf("(nframes, nblocks, two): (%d, %d, %d)\n",nframes,nblocks,blocks.getSize(2));
+    // printf("(heightB, widthB): (%d, %d)\n",heightB,widthB);
     // threads and blocks
-    int threadsPerBlock = std::min(nblocks, getMaxThreadsCurrentDevice());
-    bool NormLoop = nblocks > threadsPerBlock;
+    int threadsPerBlock = std::min(blockBatchSize, getMaxThreadsCurrentDevice());
+    bool NormLoop = blockBatchSize > threadsPerBlock;
     int FtrGrid = utils::divUp(nftrs, FtrTileSize);
     int RowGrid = utils::divUp(height, RowTileSize);
     int ColGrid = utils::divUp(width, ColTileSize);
@@ -216,10 +263,10 @@ void runBurstAverage(
     auto grid = dim3(FtrGrid,RowGrid,ColGrid);
     if (NormLoop) {
       averageForEachBlock<T, FtrTileSize, RowTileSize, ColTileSize, true>
-	<<<grid, block, 0, stream>>>(burst, blocks, ave);
+	<<<grid, block, 0, stream>>>(burst, blocks, ave, patchsize, nblocks);
     } else {
       averageForEachBlock<T, FtrTileSize, RowTileSize, ColTileSize, false>
-	<<<grid, block, 0, stream>>>(burst, blocks, ave);
+	<<<grid, block, 0, stream>>>(burst, blocks, ave, patchsize, nblocks);
     }
 
     CUDA_TEST_ERROR();
@@ -229,16 +276,20 @@ void runBurstAverage(
 	Tensor<float, 4, true>& burst,
         Tensor<int, 3, true>& blocks,
 	Tensor<float, 4, true>& ave,
+	int patchsize,
+	int nblocks,
         cudaStream_t stream) {
-   runBurstAverage<float>(burst, blocks, ave, stream);
+  runBurstAverage<float>(burst, blocks, ave, patchsize, nblocks, stream);
 }
 
 void runBurstAverage(
 	Tensor<half, 4, true>& burst,
         Tensor<int, 3, true>& blocks,
 	Tensor<half, 4, true>& ave,
+	int patchsize,
+	int nblocks,
         cudaStream_t stream) {
-   runBurstAverage<half>(burst, blocks, ave, stream);
+  runBurstAverage<half>(burst, blocks, ave, patchsize, nblocks, stream);
 }
 
 } // namespace gpu

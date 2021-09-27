@@ -349,7 +349,7 @@ inline void chooseImageTileSize(
         int width,
         int nftrs,
         int patchsize,
-        int nblocks,
+        int nblocks_total,
         int elementSize,
         size_t tempMemAvailable,
         int& tileHeight,
@@ -363,8 +363,6 @@ inline void chooseImageTileSize(
     // (or not). For <= 4 GB GPUs, prefer 512 MB of usage. For <= 8 GB GPUs,
     // prefer 768 MB of usage. Otherwise, prefer 1 GB of usage.
     auto totalMem = getCurrentDeviceProperties().totalGlobalMem;
-
-    int nblocks2 = nblocks*nblocks;
     int targetUsage = 0;
 
     if (totalMem <= ((size_t)4) * 1024 * 1024 * 1024) {
@@ -393,15 +391,15 @@ inline void chooseImageTileSize(
     auto numOptsPerCudaBlock = patchsize*patchsize*nftrs;
     int preferredTileBlocks;
     if (numOptsPerCudaBlock <= 32){
-      preferredTileBlocks = nblocks2; // all in one batch.
+      preferredTileBlocks= std::min(nblocks_total,64);
     }else if ( numOptsPerCudaBlock <= 512){
-      preferredTileBlocks = std::min(nblocks2,64);
+      preferredTileBlocks = std::min(nblocks_total,32);
     } else if ( numOptsPerCudaBlock <= 1024){
-      preferredTileBlocks = std::min(nblocks2,32);
+      preferredTileBlocks = std::min(nblocks_total,16);
     } else{
-      preferredTileBlocks = std::min(nblocks2,16);
+      preferredTileBlocks = std::min(nblocks_total,16);
     }
-    preferredTileBlocks = std::min(preferredTileBlocks,nblocks2);
+    preferredTileBlocks = std::min(preferredTileBlocks,nblocks_total);
 
     // tileCols is the remainder size
     int currUsage = preferredTileBlocks*numOptsPerCudaBlock;

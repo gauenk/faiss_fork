@@ -78,8 +78,9 @@ __global__ void nnfl2NormRowMajor(
     int ps = patchsize;
     int psSub1 = patchsize-1;
     int ps2 = patchsize*patchsize;
-    IndexType dim = nftrs*ps2;
-    float nmlz = 1./(nftrs*ps2);
+    IndexType dim = nftrs*ps2*nframes;
+    float nmlz = 1./(nftrs*ps2*nframes*1.0);
+    float inv_frames = 1./(nframes*1.0);
     int pad = patchsize/2 + nblocks/2;//utils::divDown(patchsize,2);
 
     // start of thread's batch
@@ -88,7 +89,7 @@ __global__ void nnfl2NormRowMajor(
     IndexType blockStart = BlockTileSize*(blockIdx.z);
     IndexType rowStartPix = rowStart+(nblocks/2);
     IndexType colStartPix = colStart+(nblocks/2);
-    
+    IndexType nbHalf = nblocks/2;
 
     // determine if our batchsize is too big for the location;
     // the batchsize at compile time might not be a multiple of batchsize at compute time.
@@ -111,7 +112,7 @@ __global__ void nnfl2NormRowMajor(
 	numRowIters = inline_min(RowTileSize,(int)numRowIters);
 	IndexType numColIters = vals.getSize(1) - colStart;
 	numColIters = inline_min(ColTileSize,(int)numColIters);
-	IndexType numBlockIters = blocks.getSize(0)-blockStart;
+	IndexType numBlockIters = blocks.getSize(1)-blockStart;
 	numBlockIters = inline_min(BlockTileSize,(int)numBlockIters);
 	// printf("LAST TILE!\n");
 
@@ -157,8 +158,8 @@ __global__ void nnfl2NormRowMajor(
 		  // image indices
 		  IndexType targetRow = tRowStart + hIdx;
 		  IndexType targetCol = tColStart + wIdx;
-		  IndexType refRow = rowStartPix + row + hIdx;
-		  IndexType refCol = colStartPix + col + wIdx;
+		  IndexType refRow = rowStart + row + hIdx;
+		  IndexType refCol = colStart + col + wIdx;
 
 		  TVec burst_val = legalAccess ?
 		    burst[fIdx][ftr][targetRow][targetCol]
@@ -167,6 +168,7 @@ __global__ void nnfl2NormRowMajor(
 		  TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
 
 		  delta_val = Math<TVec>::mul(delta_val,delta_val);
+		  delta_val = Math<TVec>::mul(delta_val,inv_frames);
 		  pixNorm[0][0][0] = pixNorm[0][0][0] + Math<TVec>::reduceAdd(delta_val);
 
 		}
@@ -199,8 +201,8 @@ __global__ void nnfl2NormRowMajor(
 		// image indices
 		IndexType targetRow = tRowStart + hIdx;
 		IndexType targetCol = tColStart + wIdx;
-		IndexType refRow = rowStartPix + row + hIdx;
-		IndexType refCol = colStartPix + col + wIdx;
+		IndexType refRow = rowStart + row + hIdx;
+		IndexType refCol = colStart + col + wIdx;
 
 		TVec burst_val = legalAccess ?
 		  burst[fIdx][ftr][targetRow][targetCol]
@@ -208,6 +210,7 @@ __global__ void nnfl2NormRowMajor(
 		TVec ave_val = ave[ftr][blockStart+blk][refRow][refCol];
 		TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
 		delta_val = Math<TVec>::mul(delta_val,delta_val);
+		delta_val = Math<TVec>::mul(delta_val,inv_frames);
 		pixNorm[0][0][0] = Math<TVec>::reduceAdd(delta_val);
 	      }
 
@@ -218,14 +221,7 @@ __global__ void nnfl2NormRowMajor(
 		IndexType smemBlockIdx = blk * ColTileSize * RowTileSize;
 		IndexType smemBatchIdx = smemBlockIdx + smemRowIdx + smemColIdx;
 		IndexType smemIdx = smemBatchIdx * numWarps + warpId;
-
-		// IndexType smemRowIdx = row;
-		// IndexType smemColIdx = col * numRowIters;
-		// IndexType smemBlockIdx = blk * numRowIters * numColIters;
-		// IndexType smemBatchIdx = smemBlockIdx + smemRowIdx + smemColIdx;
-		// IndexType smemIdx = smemBatchIdx * numWarps + warpId;
 		smem[smemIdx]=pixNorm[0][0][0];
-		// smem[0]=pixNorm[0][0][0];
 	      }
 	    }
 	  }
@@ -288,8 +284,8 @@ __global__ void nnfl2NormRowMajor(
     		    // image indices
     		    IndexType targetRow = tRowStart + hIdx;
     		    IndexType targetCol = tColStart + wIdx;
-    		    IndexType refRow = rowStartPix + row + hIdx;
-    		    IndexType refCol = colStartPix + col + wIdx;
+    		    IndexType refRow = rowStart + row + hIdx;
+    		    IndexType refCol = colStart + col + wIdx;
     		    
 		    // image indices
     		    TVec burst_val = legalAccess ?
@@ -309,6 +305,18 @@ __global__ void nnfl2NormRowMajor(
 #pragma unroll
 		  for (int blk = 0; blk < BlockTileSize; ++blk) {
 		    tmp[row][col][blk] = Math<TVec>::mul(tmp[row][col][blk],tmp[row][col][blk]);
+		  }
+		}
+	      }
+
+
+#pragma unroll
+	      for (int row = 0; row < RowTileSize; ++row) {
+#pragma unroll
+		for (int col = 0; col < ColTileSize; ++col) {
+#pragma unroll
+		  for (int blk = 0; blk < BlockTileSize; ++blk) {
+		    tmp[row][col][blk] = Math<TVec>::mul(tmp[row][col][blk],inv_frames);
 		  }
 		}
 	      }
@@ -363,8 +371,8 @@ __global__ void nnfl2NormRowMajor(
     		  // image indices
     		  IndexType targetRow = tRowStart + hIdx;
     		  IndexType targetCol = tColStart + wIdx;
-    		  IndexType refRow = rowStartPix + row + hIdx;
-    		  IndexType refCol = colStartPix + col + wIdx;
+    		  IndexType refRow = rowStart + row + hIdx;
+    		  IndexType refCol = colStart + col + wIdx;
 
 		  // image values
 		  TVec burst_val = legalAccess ?
@@ -384,6 +392,19 @@ __global__ void nnfl2NormRowMajor(
 		for (int blk = 0; blk < BlockTileSize; ++blk) {
 		  tmp[row][col][blk] = Math<TVec>::mul(tmp[row][col][blk],
 						       tmp[row][col][blk]);
+		}
+	      }
+            }
+
+
+#pragma unroll
+            for (int row = 0; row < RowTileSize; ++row) {
+#pragma unroll
+	      for (int col = 0; col < ColTileSize; ++col) {
+#pragma unroll
+		for (int blk = 0; blk < BlockTileSize; ++blk) {
+		  tmp[row][col][blk] = Math<TVec>::mul(tmp[row][col][blk],
+						       inv_frames);
 		}
 	      }
             }
@@ -507,7 +528,7 @@ void runBurstNnfL2Norm(
     IndexType maxThreads = (IndexType)getMaxThreadsCurrentDevice();
     constexpr int rowTileSize = 1;
     constexpr int colTileSize = 1;
-    constexpr int blockTileSize = 4;
+    constexpr int blockTileSize = 1;
 
 #define RUN_NNF_L2_ROW_MAJOR(TYPE_T, TYPE_TVEC, BURST)			\
     do {                                                                      \

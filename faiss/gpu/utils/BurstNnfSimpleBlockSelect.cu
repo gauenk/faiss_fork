@@ -17,7 +17,7 @@
      Select "topK" from "blockTileSize" of inVals
  ****/
 
-#define ABS(N) ((N<0)?(-N):(N))
+#define ABS(N) (((N)<0)?(-(N)):((N)))
 
 namespace faiss {
   namespace gpu {
@@ -40,11 +40,12 @@ namespace faiss {
 
       if ( legal_row && legal_col ) {
 
-	float outVal_max = outVals[row][col][k-1]; // already corrected value
+	float outVal_max = ABS(outVals[row][col][k-1] - valMean);
 	float outVal_curr = outVal_max;
 	for (int comp = 0; comp < numOfComps; ++comp){
 
-	  float inVal = ABS(inVals[row][col][comp] - valMean);
+	  float inVal_raw = inVals[row][col][comp];
+	  float inVal = ABS(inVal_raw - valMean);
 
 	  if (inVal < outVal_max){
 	    kidx = k-1;
@@ -52,6 +53,7 @@ namespace faiss {
 	    while( inVal < outVal_curr && kidx > 0){
 	      kidx -= 1;
 	      outVal_curr = outVals[row][col][kidx];
+	      outVal_curr = ABS(outVal_curr - valMean);
 	    }
 	    if (kidx != 0){ kidx += 1; }
 	    else if (inVal > outVal_curr){ kidx += 1; }
@@ -69,12 +71,12 @@ namespace faiss {
 	    }
 
 	    // assign new values
-	    outVals[row][col][kidx] = inVal;
+	    outVals[row][col][kidx] = inVal_raw;
 	    for (int fidx = 0; fidx < nframes; ++fidx){
 	      outKeys[fidx][row][col][kidx][0] = inKeys[fidx][comp][0];
 	      outKeys[fidx][row][col][kidx][1] = inKeys[fidx][comp][1];
 	    }
-	    outVal_max = outVals[row][col][k-1];
+	    outVal_max = ABS(outVals[row][col][k-1]-valMean);
 
 	  }
 	}
