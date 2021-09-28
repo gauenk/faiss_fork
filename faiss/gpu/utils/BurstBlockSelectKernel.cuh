@@ -19,10 +19,10 @@ template <
         int NumWarpQ,
         int NumThreadQ,
         int ThreadsPerBlock>
-__global__ void blockSelect(
-        Tensor<K, 2, true> in,
-        Tensor<K, 2, true> outK,
-        Tensor<IndexType, 2, true> outV,
+__global__ void burstBlockSelect(
+        Tensor<K, 3, true> in,
+        Tensor<K, 3, true> outK,
+        Tensor<IndexType, 3, true> outV,
         K initK,
         IndexType initV,
         int k) {
@@ -43,28 +43,29 @@ __global__ void blockSelect(
 
     // Grid is exactly sized to rows available
     int row = blockIdx.x;
+    int col = blockIdx.y;
 
     int i = threadIdx.x;
-    K* inStart = in[row][i].data(); // get ptr to "float" value
+    K* inStart = in[row][col][i].data(); // get ptr to "float" value
 
     // Whole warps must participate in the selection
-    int limit = utils::roundDown(in.getSize(1), kWarpSize);
+    int limit = utils::roundDown(in.getSize(2), kWarpSize);
 
     for (; i < limit; i += ThreadsPerBlock) {
-        heap.add(*inStart, (IndexType)i); // async "add" fxn across all thrds in blk
+        heap.add(*inStart, (IndexType)i); //locally (per-thread) serially append new datum
         inStart += ThreadsPerBlock; // reduces access time by using ptr athrimetic
     }
 
     // Handle last remainder fraction of a warp of elements
-    if (i < in.getSize(1)) {
+    if (i < in.getSize(2)) {
         heap.addThreadQ(*inStart, (IndexType)i);
     }
 
-    heap.reduce();
+    heap.reduce(); // warp reduce using shared memory; quite intensive code: "Merge..."
 
     for (int i = threadIdx.x; i < k; i += ThreadsPerBlock) {
-        outK[row][i] = smemK[i];
-        outV[row][i] = smemV[i];
+        outK[row][col][i] = smemK[i];
+        outV[row][col][i] = smemV[i];
     }
 }
 
@@ -75,11 +76,11 @@ template <
         int NumWarpQ,
         int NumThreadQ,
         int ThreadsPerBlock>
-__global__ void blockSelectPair(
-        Tensor<K, 2, true> inK,
-        Tensor<IndexType, 2, true> inV,
-        Tensor<K, 2, true> outK,
-        Tensor<IndexType, 2, true> outV,
+__global__ void burstBlockSelectPair(
+        Tensor<K, 3, true> inK,
+        Tensor<IndexType, 3, true> inV,
+        Tensor<K, 3, true> outK,
+        Tensor<IndexType, 3, true> outV,
         K initK,
         IndexType initV,
         int k) {
@@ -100,13 +101,14 @@ __global__ void blockSelectPair(
 
     // Grid is exactly sized to rows available
     int row = blockIdx.x;
+    int col = blockIdx.y;
 
     int i = threadIdx.x;
-    K* inKStart = inK[row][i].data();
-    IndexType* inVStart = inV[row][i].data();
+    K* inKStart = inK[row][col][i].data();
+    IndexType* inVStart = inV[row][col][i].data();
 
     // Whole warps must participate in the selection
-    int limit = utils::roundDown(inK.getSize(1), kWarpSize);
+    int limit = utils::roundDown(inK.getSize(2), kWarpSize);
 
     for (; i < limit; i += ThreadsPerBlock) {
         heap.add(*inKStart, *inVStart);
@@ -115,48 +117,48 @@ __global__ void blockSelectPair(
     }
 
     // Handle last remainder fraction of a warp of elements
-    if (i < inK.getSize(1)) {
+    if (i < inK.getSize(2)) {
         heap.addThreadQ(*inKStart, *inVStart);
     }
 
     heap.reduce();
 
     for (int i = threadIdx.x; i < k; i += ThreadsPerBlock) {
-        outK[row][i] = smemK[i];
-        outV[row][i] = smemV[i];
+        outK[row][col][i] = smemK[i];
+        outV[row][col][i] = smemV[i];
     }
 }
 
-void runBlockSelect(
-        Tensor<float, 2, true>& in,
-        Tensor<float, 2, true>& outKeys,
-        Tensor<int, 2, true>& outIndices,
+void runBurstBlockSelect(
+        Tensor<float, 3, true>& in,
+        Tensor<float, 3, true>& outKeys,
+        Tensor<int, 3, true>& outIndices,
         bool dir,
         int k,
         cudaStream_t stream);
 
-void runBlockSelectPair(
-        Tensor<float, 2, true>& inKeys,
-        Tensor<int, 2, true>& inIndices,
-        Tensor<float, 2, true>& outKeys,
-        Tensor<int, 2, true>& outIndices,
+void runBurstBlockSelectPair(
+        Tensor<float, 3, true>& inKeys,
+        Tensor<int, 3, true>& inIndices,
+        Tensor<float, 3, true>& outKeys,
+        Tensor<int, 3, true>& outIndices,
         bool dir,
         int k,
         cudaStream_t stream);
 
-void runBlockSelect(
-        Tensor<half, 2, true>& in,
-        Tensor<half, 2, true>& outKeys,
-        Tensor<int, 2, true>& outIndices,
+void runBurstBlockSelect(
+        Tensor<half, 3, true>& in,
+        Tensor<half, 3, true>& outKeys,
+        Tensor<int, 3, true>& outIndices,
         bool dir,
         int k,
         cudaStream_t stream);
 
-void runBlockSelectPair(
-        Tensor<half, 2, true>& inKeys,
-        Tensor<int, 2, true>& inIndices,
-        Tensor<half, 2, true>& outKeys,
-        Tensor<int, 2, true>& outIndices,
+void runBurstBlockSelectPair(
+        Tensor<half, 3, true>& inKeys,
+        Tensor<int, 3, true>& inIndices,
+        Tensor<half, 3, true>& outKeys,
+        Tensor<int, 3, true>& outIndices,
         bool dir,
         int k,
         cudaStream_t stream);

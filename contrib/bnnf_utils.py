@@ -8,6 +8,7 @@ import numpy as np
 from einops import rearrange,repeat
 from torch_utils import using_stream
 from nnf_share import *
+# import nnf_utils
 
 
 def rows_uniq_elems(a):
@@ -89,10 +90,52 @@ def evalAtFlow(burst, flow, patchsize, nblocks, return_mode=False):
     else:
         return vals,locs
 
+# def runBurstNnfRandSubsets(burst, patchsize, nblocks, k = 1,
+#                            valMean = 0., blockLabels=None, ref=None,
+#                            to_flow=False, fmt=False):
+
+#     nframes,nimages,c,h,w = burst.shape
+#     subsizes = [5,5,5,5,]
+
+#     vals,locs = [],[]
+#     for i in range(nimages):
+#         vals_i,locs_i = None,None
+
+#         # -- get init blocks --
+#         blockRanges,currBlocks = []
+#         exh_blocks = exh_block_range(nimages,1,nframes,nblocks)
+#         vals,locs = nnf_utils.runNnfBurst(burst[:,[i]], patchsize, nblocks, k = 1,
+#                                           valMean = 0., blockLabels=None, ref_t=None)
+        
+
+#         # -- search random subset for each burst --
+#         for size in subsizes:
+#             rands = npr.choice(nframes,size=size,replace=False)
+#             frames = repeat(rands,'z -> 1 1 z')
+#             blockLabels = mesh_block_ranges(frames,blockRanges,curr_blocks,device)
+#             vals_i,locs_i = runBurstNnf(burst, patchsize, nblocks, k = k,
+#                                         valMean = valMean, blockLabels=blockLabels,
+#                                         vals=vals_i,locs=locs_i)
+#         vals.append(vals_i)
+#         locs.append(locs_i)
+#     vals = torch.stack(vals)
+#     locs = torch.stack(locs)
+    
+#     # -- format output --
+#     if to_flow:
+#         locs_y = locs[...,0]
+#         locs_x = locs[...,1]
+#         locs = torch.stack([locs_x,-locs_y],dim=-1)
+    
+#     if fmt:
+#         vals = rearrange(vals,'i h w k -> i (h w) k').cpu()
+#         locs = rearrange(locs,'i t h w k two -> k i (h w) t two').cpu().long()
+
+#     return curr_blocks
 
 def runBurstNnf(burst, patchsize, nblocks, k = 1,
                 valMean = 0., blockLabels=None, ref=None,
-                to_flow=False, fmt=False):
+                to_flow=False, fmt=False, in_vals=None,in_locs=None):
 
     # -- create faiss GPU resource --
     res = faiss.StandardGpuResources()
@@ -105,9 +148,18 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
     # -- compute search "blockLabels" across image burst --
     vals,locs = [],[]
     for i in range(nimages):
+
+        # -- create padded burst --
         burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
+
+        # -- assign input vals and locs --
+        vals_i,locs_i = in_vals,in_locs
+        if not(in_vals is None): vals_i = vals_i[i]
+        if not(in_locs is None): locs_i = locs_i[i]
+
+        # -- execute over search space! --
         vals_i,locs_i = _runBurstNnf(res, img_shape, burstPad_i,
-                                     ref, None, None,
+                                     ref, vals_i, locs_i,
                                      patchsize, nblocks,
                                      k = k, valMean = valMean,
                                      blockLabels=blockLabels)

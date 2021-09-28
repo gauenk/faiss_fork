@@ -71,7 +71,7 @@ def test_burst_nnf_sample():
     # h,w,c = 256,256,3
     h,w,c = 32,32,2
     # h,w,c = 16,16,2
-    # h,w,c = 48,48,3
+    # h,w,c = 47,47,3
     # h,w,c = 32,32,3
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
@@ -89,7 +89,7 @@ def test_burst_nnf_sample():
     # -- apply dynamic xform --
     dynamic_info = edict()
     dynamic_info.mode = 'global'
-    dynamic_info.nframes = 5
+    dynamic_info.nframes = 7
     dynamic_info.ppf = 1
     dynamic_info.frame_size = [h,w]
     dyn_xform = get_dynamic_transform(dynamic_info,None)
@@ -142,7 +142,6 @@ def test_burst_nnf_sample():
                                               patchsize, nblocks,
                                               1, valMean = valMean,
                                               blockLabels=None)
-
     
     # ------------------------------
     #

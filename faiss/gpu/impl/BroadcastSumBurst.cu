@@ -236,8 +236,8 @@ void runBurstAverage(
 
     // constants
     constexpr int FtrTileSize = 1;
-    constexpr int RowTileSize = 1;
-    constexpr int ColTileSize = 1;
+    constexpr int RowTileSize = 2;
+    constexpr int ColTileSize = 2;
 
     // shapes 
     int blockBatchSize = blocks.getSize(1);

@@ -55,11 +55,23 @@ set(FAISS_GPU_SRC
   impl/scan/IVFInterleaved2048.cu
   utils/BurstNnfSimpleBlockSelect.cu
   utils/NnfSimpleBlockSelect.cu
+  utils/BurstBlockSelectFloat.cu
   utils/BlockSelectFloat.cu
   utils/DeviceUtils.cu
   utils/StackDeviceMemory.cpp
   utils/Timer.cpp
   utils/WarpSelectFloat.cu
+  utils/burstblockselect/BurstBlockSelectFloat1.cu
+  utils/burstblockselect/BurstBlockSelectFloat32.cu
+  utils/burstblockselect/BurstBlockSelectFloat64.cu
+  utils/burstblockselect/BurstBlockSelectFloat128.cu
+  utils/burstblockselect/BurstBlockSelectFloat256.cu
+  utils/burstblockselect/BurstBlockSelectFloatF512.cu
+  utils/burstblockselect/BurstBlockSelectFloatF1024.cu
+  utils/burstblockselect/BurstBlockSelectFloatF2048.cu
+  utils/burstblockselect/BurstBlockSelectFloatT512.cu
+  utils/burstblockselect/BurstBlockSelectFloatT1024.cu
+  utils/burstblockselect/BurstBlockSelectFloatT2048.cu
   utils/blockselect/BlockSelectFloat1.cu
   utils/blockselect/BlockSelectFloat32.cu
   utils/blockselect/BlockSelectFloat64.cu
@@ -137,6 +149,7 @@ set(FAISS_GPU_HEADERS
   impl/scan/IVFInterleavedImpl.cuh
   utils/BurstNnfSimpleBlockSelect.cuh
   utils/NnfSimpleBlockSelect.cuh
+  utils/BurstBlockSelectKernel.cuh
   utils/BlockSelectKernel.cuh
   utils/Comparators.cuh
   utils/ConversionOperators.cuh

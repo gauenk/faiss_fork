@@ -528,7 +528,7 @@ void runBurstNnfL2Norm(
     IndexType maxThreads = (IndexType)getMaxThreadsCurrentDevice();
     constexpr int rowTileSize = 1;
     constexpr int colTileSize = 1;
-    constexpr int blockTileSize = 1;
+    constexpr int blockTileSize = 8;
 
 #define RUN_NNF_L2_ROW_MAJOR(TYPE_T, TYPE_TVEC, BURST)			\
     do {                                                                      \
