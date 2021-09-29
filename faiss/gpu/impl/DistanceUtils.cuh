@@ -391,13 +391,13 @@ inline void chooseImageTileSize(
     auto numOptsPerCudaBlock = patchsize*patchsize*nftrs;
     int preferredTileBlocks;
     if (numOptsPerCudaBlock <= 32){
-      preferredTileBlocks= std::min(nblocks_total,64);
+      preferredTileBlocks= std::min(nblocks_total,128);
     }else if ( numOptsPerCudaBlock <= 512){
-      preferredTileBlocks = std::min(nblocks_total,32);
+      preferredTileBlocks = std::min(nblocks_total,64);
     } else if ( numOptsPerCudaBlock <= 1024){
-      preferredTileBlocks = std::min(nblocks_total,16);
+      preferredTileBlocks = std::min(nblocks_total,64);
     } else{
-      preferredTileBlocks = std::min(nblocks_total,16);
+      preferredTileBlocks = std::min(nblocks_total,32);
     }
     preferredTileBlocks = std::min(preferredTileBlocks,nblocks_total);
 

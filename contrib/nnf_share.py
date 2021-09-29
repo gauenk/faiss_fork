@@ -37,6 +37,13 @@ def torch2swig(tensor):
         raise KeyError("Uknown tensor dtype.")
     return tensor_ptr,tensor_dtype
 
+def get_swig_ptr(th_or_np):
+    if torch.is_tensor(th_or_np):
+        array_ptr,_ = torch2swig(th_or_np)
+    else:
+        array_ptr = faiss.swig_ptr(th_or_np)
+    return array_ptr
+
 #---------------------------------
 #    
 #  Simulate Chi^2 to Approx Mode
@@ -136,6 +143,18 @@ def create_meshgrid_blockLabels(blockLabels,nframes):
     blockLabelsMesh = np.stack(blockLabelsMesh,axis=1)
     return blockLabelsMesh
 
+def getMask(nsearch,h,w,sub_nframes,dtype,device,is_tensor):
+    mask = torch.ones(nsearch,h,w,sub_nframes).to(device).type(dtype)
+    mask_ptr = get_swig_ptr(mask)
+    return mask,mask_ptr
+
+def getBlockLabelsFull(blockLabels,ishape,nblocks,dtype,device,is_tensor,t=None):
+    blLabels,_ = getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t)
+    c,h,w = ishape
+    blLabels = repeat(blLabels,'t l two -> l h w t two',h=h,w=w)
+    blockLabels_ptr = get_swig_ptr(blLabels)
+    return blLabels,blockLabels_ptr
+
 def getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t=None):
     blockLabels = getBlockLabelsNumpy(blockLabels,nblocks,dtype,t)
     blockLabels = flip_array_like(blockLabels,1)
@@ -144,10 +163,7 @@ def getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t=None):
             blockLabels = torch.cuda.IntTensor(blockLabels,device=device)
         else:
             blockLabels = torch.IntTensor(blockLabels,device=device)
-    if torch.is_tensor(blockLabels):
-        blockLabels_ptr,_ = torch2swig(blockLabels)
-    else:
-        blockLabels_ptr = faiss.swig_ptr(blockLabels)
+    blockLabels_ptr = get_swig_ptr(blockLabels)
     return blockLabels,blockLabels_ptr
 
 def getBlockLabelsNumpy(blockLabels,nblocks,dtype,t=None):

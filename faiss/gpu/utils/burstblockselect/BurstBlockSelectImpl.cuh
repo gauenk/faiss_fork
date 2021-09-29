@@ -38,10 +38,12 @@
             cudaStream_t stream) {                                             \
         FAISS_ASSERT(in.getSize(0) == outK.getSize(0));                        \
         FAISS_ASSERT(in.getSize(0) == outV.getSize(0));                        \
-        FAISS_ASSERT(outK.getSize(1) == k);                                    \
-        FAISS_ASSERT(outV.getSize(1) == k);                                    \
+        FAISS_ASSERT(in.getSize(1) == outK.getSize(1));                        \
+        FAISS_ASSERT(in.getSize(1) == outV.getSize(1));                        \
+        FAISS_ASSERT(outK.getSize(2) == k);                                    \
+        FAISS_ASSERT(outV.getSize(2) == k);                                    \
                                                                                \
-        auto grid = dim3(in.getSize(0));                                       \
+        auto grid = dim3(in.getSize(0),in.getSize(1));  		       \
                                                                                \
         constexpr int kBlockSelectNumThreads = (WARP_Q <= 1024) ? 128 : 64;    \
         auto block = dim3(kBlockSelectNumThreads);                             \

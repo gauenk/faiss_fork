@@ -52,7 +52,8 @@ template <
 __global__ void nnfl2NormRowMajor(
 	Tensor<TVec, 4, true, IndexType> burst,
 	Tensor<TVec, 4, true, IndexType> ave,
-        Tensor<int, 3, true, IndexType> blocks,
+        Tensor<int, 5, true, IndexType> blocks,
+        Tensor<bool, 4, true, IndexType> mask,
         Tensor<float, 3, true, IndexType> vals,
 	int patchsize, int nblocks, TVec TVecMax) {
     extern __shared__ char smemByte[]; // #warps * RowTileSize * ColTileSize * BlockTileSize elements
@@ -153,8 +154,8 @@ __global__ void nnfl2NormRowMajor(
 		  IndexType refCol = colStart + col + wIdx;
 
 		  // blocks
-		  IndexType blRow = blocks[fIdx][refBlk][0];
-		  IndexType blCol = blocks[fIdx][refBlk][1];
+		  IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
+		  IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
 		  IndexType tRowStart = rowStartPix + blRow + row;
 		  IndexType tColStart = colStartPix + blCol + col;
 
@@ -172,6 +173,8 @@ __global__ void nnfl2NormRowMajor(
 		    : TVecMax;
 		  TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		  TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
+		  bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		  delta_val = m_val ? delta_val : zero;
 
 		  delta_val = Math<TVec>::mul(delta_val,delta_val);
 		  delta_val = Math<TVec>::mul(delta_val,inv_frames);
@@ -201,8 +204,8 @@ __global__ void nnfl2NormRowMajor(
 		IndexType refCol = colStart + col + wIdx;
 
 		// blocks
-		IndexType blRow = blocks[fIdx][refBlk][0];
-		IndexType blCol = blocks[fIdx][refBlk][1];
+		IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
+		IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
 		IndexType tRowStart = rowStartPix + blRow + row;
 		IndexType tColStart = colStartPix + blCol + col;
 
@@ -220,6 +223,8 @@ __global__ void nnfl2NormRowMajor(
 		  : TVecMax;
 		TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
+		bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		delta_val = m_val ? delta_val : zero;
 
 		delta_val = Math<TVec>::mul(delta_val,delta_val);
 		delta_val = Math<TVec>::mul(delta_val,inv_frames);
@@ -290,8 +295,8 @@ __global__ void nnfl2NormRowMajor(
 		    IndexType refCol = colStart + col + wIdx;
 
     		    // blocks
-		    IndexType blRow = blocks[fIdx][refBlk][0];
-		    IndexType blCol = blocks[fIdx][refBlk][1];
+		    IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
+		    IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
 		    IndexType tRowStart = rowStartPix + blRow + row;
 		    IndexType tColStart = colStartPix + blCol + col;
     		    
@@ -310,6 +315,8 @@ __global__ void nnfl2NormRowMajor(
     		      : TVecMax;
     		    TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		    tmp[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
+		    bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		    tmp[row][col][blk] = m_val ? tmp[row][col][blk] : zero;
 
 		  }
 		}
@@ -384,8 +391,8 @@ __global__ void nnfl2NormRowMajor(
 		  IndexType refCol = colStart + col + wIdx;
 
     		  // blocks
-		  IndexType blRow = blocks[fIdx][refBlk][0];
-		  IndexType blCol = blocks[fIdx][refBlk][1];
+		  IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
+		  IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
 		  IndexType tRowStart = rowStartPix + blRow + row;
 		  IndexType tColStart = colStartPix + blCol + col;
     		  
@@ -404,6 +411,8 @@ __global__ void nnfl2NormRowMajor(
 		    : TVecMax;
 		  TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		  tmp[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
+		  bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		  tmp[row][col][blk] = m_val ? tmp[row][col][blk] : zero;
 
 		}
 	      }
@@ -542,10 +551,11 @@ __global__ void nnfl2NormRowMajor(
 }
 
 template <typename T, typename TVec, typename IndexType>
-void runBurstNnfL2Norm(
+void runSubBurstNnfL2Norm(
 	Tensor<T, 4, true, IndexType>& burst,
 	Tensor<T, 4, true, IndexType>& ave,
-        Tensor<int, 3, true, IndexType>& blocks,
+        Tensor<int, 5, true, IndexType>& blocks,
+        Tensor<bool, 4, true, IndexType>& mask,
         Tensor<float, 3, true, IndexType>& vals,
 	int patchsize, int nblocks,
         bool normSquared,
@@ -567,7 +577,7 @@ void runBurstNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         true,                                                 \
-			  true><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
+			  true><<<grid, block, smem, stream>>>(BURST, ave, blocks, mask, vals, patchsize, nblocks, TVecMax); \
             } else {                                                          \
                 nnfl2NormRowMajor<                                               \
                         TYPE_T,                                               \
@@ -577,7 +587,7 @@ void runBurstNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         true,                                                 \
-		  false><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
+		  false><<<grid, block, smem, stream>>>(BURST, ave, blocks, mask, vals, patchsize, nblocks, TVecMax); \
             }                                                                 \
         } else {                                                              \
             if (normSquared) {                                                \
@@ -589,7 +599,7 @@ void runBurstNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         false,                                                \
-		true><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
+		true><<<grid, block, smem, stream>>>(BURST, ave, blocks, mask, vals, patchsize, nblocks, TVecMax); \
             } else {                                                          \
                 nnfl2NormRowMajor<                                               \
                         TYPE_T,                                               \
@@ -599,7 +609,7 @@ void runBurstNnfL2Norm(
                         colTileSize,                                          \
                         blockTileSize,                                          \
                         false,                                                \
-		  false><<<grid, block, smem, stream>>>(BURST, ave, blocks, vals, patchsize, nblocks, TVecMax); \
+		  false><<<grid, block, smem, stream>>>(BURST, ave, blocks, mask, vals, patchsize, nblocks, TVecMax); \
             }                                                                 \
         }                                                                     \
     } while (0)
@@ -642,49 +652,53 @@ void runBurstNnfL2Norm(
     CUDA_TEST_ERROR();
 }
 
-void runBurstNnfL2Norm(
+void runSubBurstNnfL2Norm(
 	Tensor<float, 4, true>& burst,
 	Tensor<float, 4, true>& ave,
-        Tensor<int, 3, true>& blocks,
+        Tensor<int, 5, true>& blocks,
+        Tensor<bool, 4, true>& mask,
         Tensor<float, 3, true>& vals,
 	int patchsize,
 	int nblocks,
         bool normSquared,
         cudaStream_t stream) {
     if (burst.canUseIndexType<int>()) {
-        runBurstNnfL2Norm<float, float4, int>(
-		burst, ave, blocks, vals, patchsize, nblocks, normSquared, stream);
+        runSubBurstNnfL2Norm<float, float4, int>(
+		burst, ave, blocks, mask, vals, patchsize, nblocks, normSquared, stream);
     } else {
         auto burstCast = burst.castIndexType<long>();
         auto aveCast = ave.castIndexType<long>();
         auto blocksCast = blocks.castIndexType<long>();
+        auto maskCast = mask.castIndexType<long>();
         auto valCast = vals.castIndexType<long>();
 
-        runBurstNnfL2Norm<float, float4, long>(
-		burstCast, aveCast, blocksCast, valCast,
-		patchsize, nblocks, normSquared, stream);
+        runSubBurstNnfL2Norm<float, float4, long>(
+		burstCast, aveCast, blocksCast, maskCast,
+		valCast, patchsize, nblocks, normSquared, stream);
     }
 }
 
-void runBurstNnfL2Norm(
+void runSubBurstNnfL2Norm(
 	Tensor<half, 4, true>& burst,
 	Tensor<half, 4, true>& ave,
-        Tensor<int, 3, true>& blocks,
+        Tensor<int, 5, true>& blocks,
+        Tensor<bool, 4, true>& mask,
         Tensor<float, 3, true>& vals,
 	int patchsize,
 	int nblocks,
         bool normSquared,
         cudaStream_t stream) {
     if (burst.canUseIndexType<int>()) {
-        runBurstNnfL2Norm<half, half2, int>(
-		burst, ave, blocks, vals, patchsize, nblocks, normSquared, stream);
+        runSubBurstNnfL2Norm<half, half2, int>(
+		burst, ave, blocks, mask, vals, patchsize, nblocks, normSquared, stream);
     } else {
         auto burstCast = burst.castIndexType<long>();
         auto aveCast = ave.castIndexType<long>();
         auto blocksCast = blocks.castIndexType<long>();
+        auto maskCast = mask.castIndexType<long>();
         auto valCast = vals.castIndexType<long>();
-        runBurstNnfL2Norm<half, half2, long>(burstCast, aveCast,
-					     blocksCast, valCast,
+        runSubBurstNnfL2Norm<half, half2, long>(burstCast, aveCast, blocksCast,
+					     maskCast, valCast,
 					     patchsize, nblocks,
 					     normSquared, stream);
     }

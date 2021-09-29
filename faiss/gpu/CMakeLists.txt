@@ -10,6 +10,7 @@ set(FAISS_GPU_SRC
   GpuClonerOptions.cpp
   GpuDistance.cu
   GpuNnfDistance.cu
+  GpuSubBurstNnfDistance.cu
   GpuBurstNnfDistance.cu
   GpuIndex.cu
   GpuIndexBinaryFlat.cu
@@ -24,7 +25,9 @@ set(FAISS_GPU_SRC
   impl/BinaryFlatIndex.cu
   impl/BroadcastSum.cu
   impl/BroadcastSumBurst.cu
+  impl/BroadcastSumSubBurst.cu
   impl/Distance.cu
+  impl/SubBurstPatchDistance.cu
   impl/BurstPatchDistance.cu
   impl/ImagePatchDistance.cu
   impl/FlatIndex.cu
@@ -39,6 +42,7 @@ set(FAISS_GPU_SRC
   impl/IVFUtilsSelect2.cu
   impl/InterleavedCodes.cpp
   impl/BurstNnfL2Norm.cu
+  impl/SubBurstNnfL2Norm.cu
   impl/NnfL2Norm.cu
   impl/L2Norm.cu
   impl/L2Select.cu
@@ -55,6 +59,7 @@ set(FAISS_GPU_SRC
   impl/scan/IVFInterleaved2048.cu
   utils/BurstNnfSimpleBlockSelect.cu
   utils/NnfSimpleBlockSelect.cu
+  utils/BlockIndices2Labels.cu
   utils/BurstBlockSelectFloat.cu
   utils/BlockSelectFloat.cu
   utils/DeviceUtils.cu
@@ -102,7 +107,8 @@ set(FAISS_GPU_HEADERS
   GpuClonerOptions.h
   GpuDistance.h
   GpuNnfDistance.h
-  GpuBurstNnfDistance.cu
+  GpuSubBurstNnfDistance.h
+  GpuBurstNnfDistance.h
   GpuDistanceDataType.h
   GpuFaissAssert.h
   GpuIndex.h
@@ -119,7 +125,9 @@ set(FAISS_GPU_HEADERS
   impl/BinaryFlatIndex.cuh
   impl/BroadcastSum.cuh
   impl/BroadcastSumBurst.cuh
+  impl/BroadcastSumSubBurst.cuh
   impl/Distance.cuh
+  impl/SubBurstPatchDistance.cuh
   impl/BurstPatchDistance.cuh
   impl/ImagePatchDistance.cuh
   impl/DistanceUtils.cuh
@@ -135,6 +143,7 @@ set(FAISS_GPU_HEADERS
   impl/IVFUtils.cuh
   impl/InterleavedCodes.h
   impl/BurstNnfL2Norm.cuh
+  impl/SubBurstNnfL2Norm.cuh
   impl/NnfL2Norm.cuh
   impl/L2Norm.cuh
   impl/L2Select.cuh
@@ -149,6 +158,7 @@ set(FAISS_GPU_HEADERS
   impl/scan/IVFInterleavedImpl.cuh
   utils/BurstNnfSimpleBlockSelect.cuh
   utils/NnfSimpleBlockSelect.cuh
+  utils/BlockIndices2Labels.cuh
   utils/BurstBlockSelectKernel.cuh
   utils/BlockSelectKernel.cuh
   utils/Comparators.cuh

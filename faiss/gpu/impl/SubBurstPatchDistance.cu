@@ -11,10 +11,11 @@
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/gpu/impl/BroadcastSum.cuh>
 #include <faiss/gpu/impl/BroadcastSumBurst.cuh>
-#include <faiss/gpu/impl/BurstPatchDistance.cuh>
+#include <faiss/gpu/impl/BroadcastSumSubBurst.cuh>
+#include <faiss/gpu/impl/SubBurstPatchDistance.cuh>
 #include <faiss/gpu/impl/DistanceUtils.cuh>
 #include <faiss/gpu/impl/L2Norm.cuh>
-#include <faiss/gpu/impl/BurstNnfL2Norm.cuh>
+#include <faiss/gpu/impl/SubBurstNnfL2Norm.cuh>
 #include <faiss/gpu/impl/L2Select.cuh>
 #include <faiss/gpu/utils/BurstBlockSelectKernel.cuh>
 #include <faiss/gpu/utils/DeviceDefs.cuh>
@@ -36,13 +37,15 @@ namespace faiss {
 
 
 template <typename T>
-void runBurstPatchDistance(
+void runSubBurstPatchDistance(
         GpuResources* res,
         cudaStream_t stream,
         Tensor<T, 4, true>& burst,
-        Tensor<int, 3, true>& blockLabels,
+        Tensor<T, 3, true>& subAve,
+        Tensor<int, 5, true>& blockLabels,
+        Tensor<bool, 4, true>& mask,
         int k,
-        int t,
+        int total_nframes,
         int h,
         int w,
         int c,
@@ -54,11 +57,16 @@ void runBurstPatchDistance(
 	bool computeL2) {
 
     // Size of proposed image 
-    auto nframes = burst.getSize(0);
+    auto sub_nframes = burst.getSize(0);
     auto nftrs = burst.getSize(1);
     auto heightPad = burst.getSize(2);
     auto widthPad = burst.getSize(3);
-    int nblocks_total = blockLabels.getSize(1);
+
+    int nblocks_total = blockLabels.getSize(0);
+    int heightBl = blockLabels.getSize(1);
+    int widthBl = blockLabels.getSize(2);
+    int subBl_nframes = blockLabels.getSize(3);
+
     int nblocks2 = nblocks*nblocks;
     int pad = std::floor(patchsize/2) + std::floor(nblocks/2);
     int psHalf = std::floor(patchsize/2);
@@ -75,13 +83,25 @@ void runBurstPatchDistance(
     auto widthInd = outIndices.getSize(2);
     auto kOutInd = outIndices.getSize(3);
     auto two = outIndices.getSize(4);
+
+    // Size of subset average
+    auto nftrs_sa = subAve.getSize(0);
+    auto height_sa = subAve.getSize(1);
+    auto width_sa = subAve.getSize(2);
+    printf("HI\n");
     
     // Assert same size
-    FAISS_ASSERT(nframes == nframes_outInd);
+    FAISS_ASSERT(sub_nframes == nframes_outInd);
     FAISS_ASSERT(height == (heightPad-2*pad));
     FAISS_ASSERT(width == (widthPad-2*pad));
     FAISS_ASSERT(height == heightInd);
     FAISS_ASSERT(width == widthInd);
+    FAISS_ASSERT(nftrs_sa == nftrs);
+    FAISS_ASSERT(height_sa == heightPad);
+    FAISS_ASSERT(width_sa == widthPad);
+    FAISS_ASSERT(heightBl == height);
+    FAISS_ASSERT(widthBl == width);
+    FAISS_ASSERT(sub_nframes == subBl_nframes);
     FAISS_ASSERT(kOut == k);
     FAISS_ASSERT(kOutInd == k);
     FAISS_ASSERT(two == 2);
@@ -416,6 +436,7 @@ void runBurstPatchDistance(
         auto outDistanceHeightView = outDistances.narrow(0, i, curHeightSize);
         auto outIndexHeightView = outIndices.narrow(1, i, curHeightSize);
 	auto burstHeightView = burst.narrow(2, i, paddedHeightSize);
+	auto subAveHeightView = subAve.narrow(1, i, paddedHeightSize);
 
 	// Tile WIDTH pixels
         for (int j = 0; j < width; j += tileWidth) {
@@ -433,6 +454,7 @@ void runBurstPatchDistance(
             auto outDistanceView = outDistanceHeightView.narrow(1, j, curWidthSize);
             auto outIndexView = outIndexHeightView.narrow(2, j, curWidthSize);
             auto burstView = burstHeightView.narrow(3, j, paddedWidthSize);
+	    auto subAveView = subAveHeightView.narrow(2, j, paddedWidthSize);
 
 	    for (int blk = 0; blk < nblocks_total; blk += tileBlocks) {
 	      if (InterruptCallback::is_interrupted()) {
@@ -448,37 +470,46 @@ void runBurstPatchDistance(
 	      // 	     curHeightSize,curWidthSize,curBlockSize);
 	      auto aveView = aveBufs[curStream]
 	      	->narrow(1, 0, curBlockSize)
-	      	.narrow(2, 0, curHeightSize+2*psHalf)
-	      	.narrow(3,0, curWidthSize+2*psHalf);
+	      	.narrow(2, 0, curHeightSize)//+2*psHalf) // ?Do I use these pads?
+	      	.narrow(3,0, curWidthSize);//+2*psHalf);
 	      auto distanceBufView = distanceBufs[curStream]
 		->narrow(0, 0, curHeightSize)
 		.narrow(1, 0, curWidthSize)
-		.narrow(2,0,curBlockSize);
+		.narrow(2,0, curBlockSize);
 
 	      //
 	      // View for Blocks
 	      //
-	      auto blockLabelView = blockLabels.narrow(1, blk, curBlockSize);
+	      auto blockLabelView = blockLabels
+		.narrow(0, blk, curBlockSize)
+		.narrow(1, i, curHeightSize)
+		.narrow(2, j, curWidthSize);
+	      auto maskView = mask
+		.narrow(0, blk, curBlockSize)
+		.narrow(1, i, curHeightSize)
+		.narrow(2, j, curWidthSize);
+
 
 	      //
 	      // Compute Average 
 	      //
 
-	      runBurstAverage(burstView,blockLabelView,
-	      		      aveView,patchsize,nblocks,
-	      		      streams[curStream]);
+	      runSubBurstAverage(burstView,subAveView,blockLabelView,maskView,
+	      			 aveView,total_nframes,patchsize,nblocks,
+	      			 streams[curStream]);
 
 	      //
 	      // Execute Template Search
 	      //
 
-	      runBurstNnfL2Norm(burstView,
-	      			aveView,
-	      			blockLabelView,
-	      			distanceBufView,
-	      			// outDistanceView,
-	      			patchsize,nblocks,true,
-	      			streams[curStream]);
+	      runSubBurstNnfL2Norm(burstView,
+				   aveView,
+				   blockLabelView,
+				   maskView,
+				   distanceBufView,
+				   // outDistanceView,
+				   patchsize,nblocks,true,
+				   streams[curStream]);
 
 	      // 
 	      //  Top K Selection 
@@ -487,18 +518,18 @@ void runBurstPatchDistance(
 	      // this "topK" selection is limited to a "curBlockSize" batch
 	      //
 
-	      runBurstNnfSimpleBlockSelect(distanceBufView,
-	      				   blockLabelView,
-	      				   outDistanceView,
-	      				   outIndexView,
-	      				   valMean,
-	      				   false,k,streams[curStream]);
+	      // runBurstNnfSimpleBlockSelect(distanceBufView,
+	      // 				   blockLabelView,
+	      // 				   outDistanceView,
+	      // 				   outIndexView,
+	      // 				   valMean,
+	      // 				   false,k,streams[curStream]);
 
 
 	      // auto indexingBuf = indexingBufs[curStream]
 	      // 	->narrow(0,0,curHeightSize)
 	      // 	.narrow(1,0,curWidthSize);
-	      // runBurstBlockSelect(distanceBufView,
+	      // runSubBurstBlockSelect(distanceBufView,
 	      // 			  // blockLabelView,
 	      // 			  outDistanceView,
 	      // 			  indexingBuf,
@@ -517,7 +548,7 @@ void runBurstPatchDistance(
 	    // 
 	    //  Top K Selection: Compare across Inputs & Outputs (e.g. "Pairs")
 	    //
-	    // runBurstBlockSelectPairs(distanceBufView,
+	    // runSubBurstBlockSelectPairs(distanceBufView,
 	    // 			     // blockLabelView,
 	    // 			     outDistanceView,
 	    // 			     indexingBuf,
@@ -546,11 +577,13 @@ void runBurstPatchDistance(
 }
 
 
-void runBurstPatchDistance(
+void runSubBurstPatchDistance(
         GpuResources* res,
         cudaStream_t stream,
         Tensor<float, 4, true>& burst,
-        Tensor<int, 3, true>& blockLabels,
+        Tensor<float, 3, true>& subAve,
+        Tensor<int, 5, true>& blockLabels,
+        Tensor<bool, 4, true>& mask,
         int k,
         int t,
         int h,
@@ -562,11 +595,13 @@ void runBurstPatchDistance(
         Tensor<float, 3, true>& outDistances,
         Tensor<int, 5, true>& outIndices,
 	bool computeL2){
-  runBurstPatchDistance<float>(
+  runSubBurstPatchDistance<float>(
         res,
         stream,
 	burst,
+	subAve,
 	blockLabels,
+	mask,
         k,t,h,w,c,
 	patchsize,
 	nblocks,
@@ -576,11 +611,13 @@ void runBurstPatchDistance(
 	computeL2);
 }
 
-void runBurstPatchDistance(
+void runSubBurstPatchDistance(
         GpuResources* res,
         cudaStream_t stream,
         Tensor<half, 4, true>& burst,
-        Tensor<int, 3, true>& blockLabels,
+        Tensor<half, 3, true>& subAve,
+        Tensor<int, 5, true>& blockLabels,
+        Tensor<bool, 4, true>& mask,
         int k,
         int t,
         int h,
@@ -592,11 +629,13 @@ void runBurstPatchDistance(
         Tensor<float, 3, true>& outDistances,
         Tensor<int, 5, true>& outIndices,
 	bool computeL2){
-  runBurstPatchDistance<half>(
+  runSubBurstPatchDistance<half>(
         res,
         stream,
 	burst,
+	subAve,
 	blockLabels,
+	mask,
         k,t,h,w,c,
 	patchsize,
 	nblocks,

@@ -29,6 +29,7 @@ sys.path.append("/home/gauenk/Documents/faiss/contrib/")
 from torch_utils import swig_ptr_from_FloatTensor,using_stream
 import nnf_utils as nnf_utils
 import bnnf_utils as bnnf_utils
+import sbnnf_utils as sbnnf_utils
 
 
 def compute_gt_burst(burst,pix_hw,flow,ps,nblocks):
@@ -69,10 +70,11 @@ def test_burst_nnf_sample():
     # h,w,c = 17,17,3
     # h,w,c = 512,512,3
     # h,w,c = 256,256,3
-    h,w,c = 32,32,2
+    # h,w,c = 128,128,3
+    # h,w,c = 64,64,2
     # h,w,c = 16,16,2
     # h,w,c = 47,47,3
-    # h,w,c = 32,32,3
+    h,w,c = 32,32,3
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
     # ps,nblocks = 11,10
@@ -89,11 +91,16 @@ def test_burst_nnf_sample():
     # -- apply dynamic xform --
     dynamic_info = edict()
     dynamic_info.mode = 'global'
-    dynamic_info.nframes = 7
+    dynamic_info.nframes = 3
     dynamic_info.ppf = 1
     dynamic_info.frame_size = [h,w]
     dyn_xform = get_dynamic_transform(dynamic_info,None)
     t = dynamic_info.nframes
+
+    # -- outputs --
+    vals = edict()
+    locs = edict()
+    runtimes = edict()
     
     # ----------------------------
     # 
@@ -155,9 +162,9 @@ def test_burst_nnf_sample():
                                               patchsize, nblocks,
                                               1, valMean = valMean,
                                               blockLabels=None)
-    nnf_runtime = time.perf_counter() - start_time
-    nnf_vals = nnf_vals[:,0]
-    nnf_locs = nnf_locs[:,0]
+    runtimes.L2Local = time.perf_counter() - start_time
+    vals.L2Local = nnf_vals[:,0]
+    locs.L2Local = nnf_locs[:,0]
 
     # -----------------------------------
     #
@@ -176,6 +183,24 @@ def test_burst_nnf_sample():
     print("GT :",gt_dist)
 
 
+    # ------------------------------------------
+    #
+    #   Compute FAISS BurstNnf with Zero Ref
+    #
+    # ------------------------------------------
+
+    valMean = gt_dist
+    start_time = time.perf_counter()
+    _vals,_locs = sbnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = 2,
+                                         valMean = valMean, blockLabels=None, ref=None)
+    runtimes.SubBurst = time.perf_counter() - start_time
+    vals.SubBurst = _vals[0][None,:] # include nframes 
+    locs.SubBurst = _locs[0]
+    print("[shapes of BurstNnf]: ")
+    print("vals.shape: ",vals.SubBurst.shape)
+    print("locs.shape: ",locs.SubBurst.shape)
+    print(locs.SubBurst[:,8,8,0]) 
+
     # -----------------------------------
     #
     #      Compute FAISS BurstNnf     
@@ -184,15 +209,15 @@ def test_burst_nnf_sample():
 
     valMean = gt_dist#3.345
     start_time = time.perf_counter()
-    vals,locs = bnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = 2,
+    _vals,_locs = bnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = 2,
                                        valMean = valMean, blockLabels=None, ref=None)
-    bfNnf_runtime = time.perf_counter() - start_time
-    vals = vals[0][None,:] # include nframes 
-    locs = locs[0]
+    runtimes.Burst = time.perf_counter() - start_time
+    vals.Burst = _vals[0][None,:] # include nframes 
+    locs.Burst = _locs[0]
     print("[shapes of BurstNnf]: ")
-    print("vals.shape: ",vals.shape)
-    print("locs.shape: ",locs.shape)
-    print(locs[:,8,8,0]) 
+    print("vals.shape: ",vals.Burst.shape)
+    print("locs.shape: ",locs.Burst.shape)
+    print(locs.Burst[:,8,8,0]) 
 
     # -----------------------------------
     #
@@ -201,9 +226,10 @@ def test_burst_nnf_sample():
     # -----------------------------------
     
     print("cuda vals!")
-    print("Our-Local runtime [\"Unfold\" + Global Search]: ",nnf_runtime)
-    print("Our-Burst runtime [No \"Unfold\" + Local Search]: ",bfNnf_runtime)
-    
+    print("Our-Local runtime [No \"Unfold\" + Local Search]: ",runtimes.L2Local)
+    print("Our-Burst runtime [No \"Unfold\" + Local Search]: ",runtimes.Burst)
+    print("Our-SubBurst runtime [No \"Unfold\" + Local Search]: ",runtimes.SubBurst)
+
     # -----------------------------------
     #
     #        Compare _Centered Pixels_
@@ -213,30 +239,31 @@ def test_burst_nnf_sample():
     # pix_hw = [h-1,w-1]
     pix_hw = [h//2,w//2]
     # pix_hw = [h//2+3,w//2-4]
-    print("Our-L2-Local Output: ",nnf_vals[:,pix_hw[0],pix_hw[1],:])
-    print("Burst-L2-Local Output: ",vals[:,pix_hw[0],pix_hw[1],:])
-    print(vals[:,pix_hw[0],pix_hw[1],:])
-    print(locs[:,pix_hw[0],pix_hw[1],0])
-    loc_top1 = locs[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    print("Our-L2-Local Output: ",vals.L2Local[:,pix_hw[0],pix_hw[1],:])
+    print("Burst-L2-Local Output: ",vals.Burst[:,pix_hw[0],pix_hw[1],:])
+    print("SubBurst-L2-Local Output: ",vals.SubBurst[:,pix_hw[0],pix_hw[1],:])
+    print(vals.Burst[:,pix_hw[0],pix_hw[1],:])
+    print(locs.Burst[:,pix_hw[0],pix_hw[1],0])
+    loc_top1 = locs.Burst[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
     print("-"*20)
-    print(vals[:,pix_hw[0]-1,pix_hw[1]-1,:])
-    print(vals[:,pix_hw[0]-1,pix_hw[1]+1,:])
-    print(vals[:,pix_hw[0]+1,pix_hw[1]-1,:])
-    print(vals[:,pix_hw[0]+1,pix_hw[1]+1,:])
+    print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]-1,:])
+    print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]+1,:])
+    print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]-1,:])
+    print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]+1,:])
     print("-"*20)
 
     output = []
-    output.append(vals[:,pix_hw[0],pix_hw[1],:].cpu().numpy())
-    # output.append(vals[:,pix_hw[0]-1,pix_hw[1]-1,:].cpu().numpy())
-    # output.append(vals[:,pix_hw[0]-1,pix_hw[1]+1,:].cpu().numpy())
-    # output.append(vals[:,pix_hw[0]+1,pix_hw[1]-1,:].cpu().numpy())
-    # output.append(vals[:,pix_hw[0]+1,pix_hw[1]+1,:].cpu().numpy())
+    output.append(vals.Burst[:,pix_hw[0],pix_hw[1],:].cpu().numpy())
+    # output.append(vals.Burst[:,pix_hw[0]-1,pix_hw[1]-1,:].cpu().numpy())
+    # output.append(vals.Burst[:,pix_hw[0]-1,pix_hw[1]+1,:].cpu().numpy())
+    # output.append(vals.Burst[:,pix_hw[0]+1,pix_hw[1]-1,:].cpu().numpy())
+    # output.append(vals.Burst[:,pix_hw[0]+1,pix_hw[1]+1,:].cpu().numpy())
     output = np.array(output)[:,0]
 
     print(flow.shape,block.shape)
     gt_dist = compute_gt_burst(burstPad,pix_hw,block,ps,nblocks)
-    top1_val = vals[0,pix_hw[0],pix_hw[1],0].item()
-    top1_loc = locs[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    top1_val = vals.Burst[0,pix_hw[0],pix_hw[1],0].item()
+    top1_loc = locs.Burst[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
     print("Burst Output @ Top1: ",top1_val)
     print("GT-Burst Output @ GT Flow: ",gt_dist)
     print("Burst Output @ Top1: ",top1_loc)

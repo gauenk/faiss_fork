@@ -48,11 +48,11 @@ def evalAtFlow(burst, flow, patchsize, nblocks, return_mode=False):
 
         # -- get shape to remove boarder --
         one,vH,vW,vK = vals_i.shape
-        ccH = slice(pad,h-pad)
-        ccW = slice(pad,w-pad)
+        # ccH = slice(pad,h-pad)
+        # ccW = slice(pad,w-pad)
         # print(h//2,h//2+1)
-        # ccH = slice(h//2+0,h//2+1)
-        # ccW = slice(w//2+0,w//2+1)
+        ccH = slice(h//2+0,h//2+1)
+        ccW = slice(w//2+0,w//2+1)
 
         # ccH = slice(h-1,h)
         # ccW = slice(w-1,w)
