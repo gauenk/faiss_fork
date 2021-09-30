@@ -2,7 +2,7 @@ import torch
 import faiss
 import numpy as np
 from einops import rearrange,repeat
-from torch_utils import swig_ptr_from_UInt8Tensor,swig_ptr_from_HalfTensor,swig_ptr_from_FloatTensor,swig_ptr_from_IntTensor,swig_ptr_from_IndicesTensor,using_stream
+from torch_utils import swig_ptr_from_UInt8Tensor,swig_ptr_from_HalfTensor,swig_ptr_from_FloatTensor,swig_ptr_from_IntTensor,swig_ptr_from_IndicesTensor,swig_ptr_from_BoolTensor
 
 # -- helpers --
 
@@ -33,6 +33,9 @@ def torch2swig(tensor):
     elif tensor.dtype == torch.float16:
         tensor_ptr = swig_ptr_from_HalfTensor(tensor)
         tensor_dtype = faiss.DistanceDataType_F16
+    elif tensor.dtype == torch.bool:
+        tensor_ptr = swig_ptr_from_BoolTensor(tensor)
+        tensor_dtype = None # not needed
     else:
         raise KeyError("Uknown tensor dtype.")
     return tensor_ptr,tensor_dtype
@@ -143,8 +146,8 @@ def create_meshgrid_blockLabels(blockLabels,nframes):
     blockLabelsMesh = np.stack(blockLabelsMesh,axis=1)
     return blockLabelsMesh
 
-def getMask(nsearch,h,w,sub_nframes,dtype,device,is_tensor):
-    mask = torch.ones(nsearch,h,w,sub_nframes).to(device).type(dtype)
+def getMask(nsearch,h,w,sub_nframes,device,is_tensor):
+    mask = torch.ones(nsearch,h,w,sub_nframes).to(device).type(torch.bool)
     mask_ptr = get_swig_ptr(mask)
     return mask,mask_ptr
 
@@ -168,14 +171,8 @@ def getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t=None):
 
 def getBlockLabelsNumpy(blockLabels,nblocks,dtype,t=None):
     if blockLabels is None:
-        blockLabels = np.zeros((nblocks**2,2))
-        blockLabelsTmp = np.arange(nblocks**2).reshape(nblocks,nblocks)
-        for i in range(nblocks**2):
-            x,y = np.where(blockLabelsTmp == i)
-            blockLabels[i,0] = x
-            blockLabels[i,1] = y
-        blockLabels -= nblocks//2
-        if not(t is None):
+        blockLabels = getBlockLabelsRaw(nblocks)
+        if not(t is None): # meshgrid for t == 1 is the same as no meshgrid.
             blockLabels = create_meshgrid_blockLabels(blockLabels,t)
             # blockLabels = repeat(blockLabels,'b two -> t b two',t=t)
     if isinstance(blockLabels,np.ndarray):
@@ -184,6 +181,16 @@ def getBlockLabelsNumpy(blockLabels,nblocks,dtype,t=None):
         return blockLabels.type(torch.int32)
     else:
         return blockLabels
+
+def getBlockLabelsRaw(nblocks):
+    blockLabels = np.zeros((nblocks**2,2))
+    blockLabelsTmp = np.arange(nblocks**2).reshape(nblocks,nblocks)
+    for i in range(nblocks**2):
+        x,y = np.where(blockLabelsTmp == i)
+        blockLabels[i,0] = x
+        blockLabels[i,1] = y
+    blockLabels -= nblocks//2
+    return blockLabels
 
 #---------------------------------
 #    

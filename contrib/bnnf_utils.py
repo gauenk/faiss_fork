@@ -151,6 +151,7 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
 
         # -- create padded burst --
         burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
+        burstTiles = tileBurst(burstPad_i,patchsize,nblocks)
 
         # -- assign input vals and locs --
         vals_i,locs_i = in_vals,in_locs

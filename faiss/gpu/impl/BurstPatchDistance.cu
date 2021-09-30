@@ -125,7 +125,7 @@ void runBurstPatchDistance(
     		   tileHeight,
     		   tileWidth,
 		   tileBlocks);
-    tileBlocks = 128;
+    // tileBlocks = 128;
     int numHeightTiles = utils::divUp(height, tileHeight);
     int numWidthTiles = utils::divUp(width, tileWidth);
     int numBlockTiles = utils::divUp((nblocks_total), tileBlocks);
@@ -448,8 +448,8 @@ void runBurstPatchDistance(
 	      // 	     curHeightSize,curWidthSize,curBlockSize);
 	      auto aveView = aveBufs[curStream]
 	      	->narrow(1, 0, curBlockSize)
-	      	.narrow(2, 0, curHeightSize+2*psHalf)
-	      	.narrow(3,0, curWidthSize+2*psHalf);
+	      	.narrow(2, 0, curHeightSize)//+2*psHalf)
+	      	.narrow(3,0, curWidthSize);//+2*psHalf);
 	      auto distanceBufView = distanceBufs[curStream]
 		->narrow(0, 0, curHeightSize)
 		.narrow(1, 0, curWidthSize)
@@ -472,8 +472,7 @@ void runBurstPatchDistance(
 	      // Execute Template Search
 	      //
 
-	      runBurstNnfL2Norm(burstView,
-	      			aveView,
+	      runBurstNnfL2Norm(burstView,aveView,
 	      			blockLabelView,
 	      			distanceBufView,
 	      			// outDistanceView,

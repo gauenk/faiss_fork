@@ -9,6 +9,28 @@ from einops import rearrange,repeat
 from torch_utils import using_stream
 from nnf_share import *
 
+import sys
+sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib/")
+from align.xforms import pix_to_flow,align_from_flow
+
+def runNnfBurstRecursive(_burst, clean, patchsize, nblocks, isize, k = 1,
+                         valMean = 0., blockLabels=None, ref_t=None):
+    wburst = _burst
+    wclean = clean
+    niters = 10
+    for i in range(niters):
+        wburst = wburst.to(_burst.device)
+        wclean = wclean.to(_burst.device)
+        vals,locs = runNnfBurst(wburst, patchsize,
+                                nblocks, k = 1,
+                                valMean = valMean,
+                                blockLabels=blockLabels)
+        pix = rearrange(locs,'t i h w 1 two -> i (h w) t two')
+        flow = pix_to_flow(pix)
+        wburst = align_from_flow(wburst,flow,nblocks,isize=isize)
+        wclean = align_from_flow(wclean,flow,nblocks,isize=isize)
+    return vals,locs,wclean
+
 def runNnfBurst(_burst, patchsize, nblocks, k = 1,
                 valMean = 0., blockLabels=None, ref_t=None):
 

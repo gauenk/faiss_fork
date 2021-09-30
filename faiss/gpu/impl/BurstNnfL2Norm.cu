@@ -90,7 +90,7 @@ __global__ void nnfl2NormRowMajor(
     IndexType blockStart = BlockTileSize*(blockIdx.z);
     IndexType rowStartPix = rowStart+(nblocks/2);
     IndexType colStartPix = colStart+(nblocks/2);
-    IndexType nbHalf = nblocks/2;
+    // IndexType nbHalf = nblocks/2;
 
     // determine if our batchsize is too big for the location;
     // the batchsize at compile time might not be a multiple of batchsize at compute time.
@@ -613,11 +613,12 @@ void runBurstNnfL2Norm(
     IndexType numThreads = std::min(dim, maxThreads);
     IndexType nWarps = utils::divUp(numThreads, kWarpSize);
     // numThreads = utils::roundUp(numThreads,kWarpSize); // round-up for warp reduce.
+    FAISS_ASSERT(vals.getSize(2) >= blocks.getSize(1));
 
     // compute number of Grids
     int height = vals.getSize(0);
     int width = vals.getSize(1);
-    int blockBatchSize = blocks.getSize(0);
+    int blockBatchSize = blocks.getSize(1);
     int numToComp = height * width * blockBatchSize;
     int numToCompPerKernel = rowTileSize * colTileSize * blockTileSize;
     int numHeightBlocks = utils::divUp(height, rowTileSize);

@@ -114,7 +114,7 @@ __global__ void nnfl2NormRowMajor(
 	numRowIters = inline_min(RowTileSize,(int)numRowIters);
 	IndexType numColIters = vals.getSize(1) - colStart;
 	numColIters = inline_min(ColTileSize,(int)numColIters);
-	IndexType numBlockIters = blocks.getSize(1)-blockStart;
+	IndexType numBlockIters = blocks.getSize(0)-blockStart;
 	numBlockIters = inline_min(BlockTileSize,(int)numBlockIters);
 	// printf("LAST TILE!\n");
 
@@ -173,7 +173,7 @@ __global__ void nnfl2NormRowMajor(
 		    : TVecMax;
 		  TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		  TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
-		  bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		  bool m_val = true;//mask[refBlk][refRow][refCol][fIdx];
 		  delta_val = m_val ? delta_val : zero;
 
 		  delta_val = Math<TVec>::mul(delta_val,delta_val);
@@ -223,7 +223,7 @@ __global__ void nnfl2NormRowMajor(
 		  : TVecMax;
 		TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		TVec delta_val = Math<TVec>::sub(burst_val,ave_val);
-		bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		bool m_val = true;//mask[refBlk][refRow][refCol][fIdx];
 		delta_val = m_val ? delta_val : zero;
 
 		delta_val = Math<TVec>::mul(delta_val,delta_val);
@@ -315,7 +315,7 @@ __global__ void nnfl2NormRowMajor(
     		      : TVecMax;
     		    TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		    tmp[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
-		    bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		    bool m_val = true;//mask[refBlk][refRow][refCol][fIdx];
 		    tmp[row][col][blk] = m_val ? tmp[row][col][blk] : zero;
 
 		  }
@@ -411,7 +411,7 @@ __global__ void nnfl2NormRowMajor(
 		    : TVecMax;
 		  TVec ave_val = ave[ftr][refBlk][refRow][refCol];
 		  tmp[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
-		  bool m_val = mask[refBlk][refRow][refCol][fIdx];
+		  bool m_val = true;//mask[refBlk][refRow][refCol][fIdx];
 		  tmp[row][col][blk] = m_val ? tmp[row][col][blk] : zero;
 
 		}

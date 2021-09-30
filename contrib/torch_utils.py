@@ -28,6 +28,14 @@ import inspect
 import sys
 import numpy as np
 
+
+def swig_ptr_from_BoolTensor(x):
+    """ gets a Faiss SWIG pointer from a pytorch tensor (on CPU or GPU) """
+    assert x.is_contiguous()
+    assert x.dtype == torch.bool
+    return faiss.cast_integer_to_void_ptr(
+        x.storage().data_ptr() + x.storage_offset())
+
 def swig_ptr_from_UInt8Tensor(x):
     """ gets a Faiss SWIG pointer from a pytorch tensor (on CPU or GPU) """
     assert x.is_contiguous()

@@ -99,7 +99,7 @@ __global__ void averageForEachBlock(
 
 		    int blRow = blocks[blk][a_row][a_col][tidx][0];
 		    int blCol = blocks[blk][a_row][a_col][tidx][1];
-		    bool m_val = mask[blk][a_row][a_col][tidx];
+		    bool m_val = true;//mask[blk][a_row][a_col][tidx];
 
 		    int b_row = rowStartBurst + blRow + row;
 		    int b_col = colStartBurst + blCol + col;
@@ -123,7 +123,7 @@ __global__ void averageForEachBlock(
 		  
 		  int blRow = blocks[threadIdx.x][a_row][a_col][tidx][0];
 		  int blCol = blocks[threadIdx.x][a_row][a_col][tidx][1];
-		  bool m_val = mask[threadIdx.x][a_row][a_col][tidx];
+		  bool m_val = true;//mask[threadIdx.x][a_row][a_col][tidx];
 
 		  int b_row = rowStartBurst+ blRow +row;
 		  int b_col = colStartBurst+ blCol +col;
@@ -170,7 +170,7 @@ __global__ void averageForEachBlock(
 
 		  int blRow = blocks[blk][a_row][a_col][tidx][0];
 		  int blCol = blocks[blk][a_row][a_col][tidx][1];
-		  bool m_val = mask[blk][a_row][a_col][tidx];
+		  bool m_val = true;//mask[blk][a_row][a_col][tidx];
 
 		  int b_ftr = ftrStart+ftr;
 		  int b_row = rowStartBurst + blRow + row;
@@ -217,7 +217,7 @@ __global__ void averageForEachBlock(
 		int a_col = colStart + col;
 		int blRow = blocks[threadIdx.x][a_row][a_col][tidx][0];
 		int blCol = blocks[threadIdx.x][a_row][a_col][tidx][1];
-		bool m_val = mask[threadIdx.x][a_row][a_col][tidx];
+		bool m_val = true;//mask[threadIdx.x][a_row][a_col][tidx];
 
 		int b_ftr = ftrStart+ftr;
 		int b_row = rowStartBurst+blRow+row;

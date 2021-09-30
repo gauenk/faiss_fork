@@ -29,7 +29,7 @@ sys.path.append("/home/gauenk/Documents/faiss/contrib/")
 from torch_utils import swig_ptr_from_FloatTensor,using_stream
 import nnf_utils as nnf_utils
 import bnnf_utils as bnnf_utils
-import sbnnf_utils as sbnnf_utils
+import sub_burst as sbnnf_utils
 
 
 def compute_gt_burst(burst,pix_hw,flow,ps,nblocks):
@@ -65,22 +65,22 @@ def test_burst_nnf_sample():
     # -- settings --
     
     # h,w,c = 1024,1024,3
-    # h,w,c,t = 32,32,3,3
+    # h,w,c = 32,32,3
     # h,w,c = 16,16,3
     # h,w,c = 17,17,3
     # h,w,c = 512,512,3
     # h,w,c = 256,256,3
     # h,w,c = 128,128,3
-    # h,w,c = 64,64,2
-    # h,w,c = 16,16,2
+    # h,w,c = 64,64,3
+    # h,w,c = 15,15,2
     # h,w,c = 47,47,3
     h,w,c = 32,32,3
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
     # ps,nblocks = 11,10
-    patchsize = 11
+    patchsize = 3
     nblocks = 3
-    k = 2
+    k = 3#(nblocks**2)**2
     gpuid = 0
 
     # -- derived variables --
@@ -138,6 +138,10 @@ def test_burst_nnf_sample():
     print(burst.shape)
     print(burstPad.shape)
 
+    # -- get block labels --
+    blockLabels,_ = bnnf_utils.getBlockLabels(None,nblocks,np.float32,
+                                              'cpu',False,nframes)
+
     # ------------------------------
     #
     #    Extra Compute to "Burn-in"
@@ -166,6 +170,21 @@ def test_burst_nnf_sample():
     vals.L2Local = nnf_vals[:,0]
     locs.L2Local = nnf_locs[:,0]
 
+    # ------------------------------
+    #
+    #    Compute BP Search
+    #
+    # ------------------------------
+
+    valMean = 0.
+    start_time = time.perf_counter()
+    nnf_vals,nnf_locs = sbnnf_utils.runBpSearch(burst, patchsize, nblocks,
+                                                1, valMean = valMean,
+                                                blockLabels=None)
+    runtimes.BpSearch = time.perf_counter() - start_time
+    vals.BpSearch = nnf_vals[:,0]
+    locs.BpSearch = nnf_locs[:,0]
+
     # -----------------------------------
     #
     #    Compute BurstNNF @ Given Flow
@@ -191,7 +210,7 @@ def test_burst_nnf_sample():
 
     valMean = gt_dist
     start_time = time.perf_counter()
-    _vals,_locs = sbnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = 2,
+    _vals,_locs = sbnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = k,
                                          valMean = valMean, blockLabels=None, ref=None)
     runtimes.SubBurst = time.perf_counter() - start_time
     vals.SubBurst = _vals[0][None,:] # include nframes 
@@ -209,7 +228,7 @@ def test_burst_nnf_sample():
 
     valMean = gt_dist#3.345
     start_time = time.perf_counter()
-    _vals,_locs = bnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = 2,
+    _vals,_locs = bnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = k,
                                        valMean = valMean, blockLabels=None, ref=None)
     runtimes.Burst = time.perf_counter() - start_time
     vals.Burst = _vals[0][None,:] # include nframes 
@@ -232,7 +251,7 @@ def test_burst_nnf_sample():
 
     # -----------------------------------
     #
-    #        Compare _Centered Pixels_
+    #      Compare _Centered Pixels_
     #
     # -----------------------------------
 
@@ -242,14 +261,33 @@ def test_burst_nnf_sample():
     print("Our-L2-Local Output: ",vals.L2Local[:,pix_hw[0],pix_hw[1],:])
     print("Burst-L2-Local Output: ",vals.Burst[:,pix_hw[0],pix_hw[1],:])
     print("SubBurst-L2-Local Output: ",vals.SubBurst[:,pix_hw[0],pix_hw[1],:])
-    print(vals.Burst[:,pix_hw[0],pix_hw[1],:])
-    print(locs.Burst[:,pix_hw[0],pix_hw[1],0])
+
+    vBurst = vals.Burst[:,pix_hw[0],pix_hw[1],:].cpu().numpy()[0]
+    vSubBurst = vals.SubBurst[:,pix_hw[0],pix_hw[1],:].cpu().numpy()[0]
+    iBurstValid = np.where(vBurst < 1e10)
+    iSubBurstValid = np.where(vSubBurst < 1e10)
+    assert np.all(iBurstValid[0] == iSubBurstValid[0]),"Equal OOB"
+    # assert np.all(iBurstValid[1] == iSubBurstValid[1]),"Equal OOB"
+
+
+    vBurst = vBurst[ iBurstValid ]
+    vSubBurst = vSubBurst[ iSubBurstValid ]
+    neqLocs = np.where(vBurst - vSubBurst)
+    blockIndicesNeq = iBurstValid[0][neqLocs[0]]
+    assert len(blockIndicesNeq) == 0, "Both burst types must be equal."
+    # print("blockLabels")
+    # print(blockLabels.shape)
+    # print(blockLabels[:,blockIndicesNeq])
+    # print(blockLabels[:,-5:])
+
+    # print(vals.Burst[:,pix_hw[0],pix_hw[1],:])
+    # print(locs.Burst[:,pix_hw[0],pix_hw[1],0])
     loc_top1 = locs.Burst[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
     print("-"*20)
-    print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]-1,:])
-    print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]+1,:])
-    print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]-1,:])
-    print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]+1,:])
+    # print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]-1,:])
+    # print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]+1,:])
+    # print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]-1,:])
+    # print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]+1,:])
     print("-"*20)
 
     output = []

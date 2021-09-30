@@ -17,11 +17,10 @@
 #include <faiss/gpu/impl/L2Norm.cuh>
 #include <faiss/gpu/impl/SubBurstNnfL2Norm.cuh>
 #include <faiss/gpu/impl/L2Select.cuh>
-#include <faiss/gpu/utils/BurstBlockSelectKernel.cuh>
 #include <faiss/gpu/utils/DeviceDefs.cuh>
 #include <faiss/gpu/utils/Limits.cuh>
 #include <faiss/gpu/utils/MatrixMult.cuh>
-#include <faiss/gpu/utils/BurstNnfSimpleBlockSelect.cuh>
+#include <faiss/gpu/utils/SubBurstNnfSimpleBlockSelect.cuh>
 #include <faiss/gpu/utils/BlockIndices2Labels.cuh>
 
 #include <cstdio>
@@ -97,8 +96,8 @@ void runSubBurstPatchDistance(
     FAISS_ASSERT(height == heightInd);
     FAISS_ASSERT(width == widthInd);
     FAISS_ASSERT(nftrs_sa == nftrs);
-    FAISS_ASSERT(height_sa == heightPad);
-    FAISS_ASSERT(width_sa == widthPad);
+    FAISS_ASSERT(height_sa == height);
+    FAISS_ASSERT(width_sa == width);
     FAISS_ASSERT(heightBl == height);
     FAISS_ASSERT(widthBl == width);
     FAISS_ASSERT(sub_nframes == subBl_nframes);
@@ -145,7 +144,7 @@ void runSubBurstPatchDistance(
     		   tileHeight,
     		   tileWidth,
 		   tileBlocks);
-    tileBlocks = 128;
+    // tileBlocks = 128;
     int numHeightTiles = utils::divUp(height, tileHeight);
     int numWidthTiles = utils::divUp(width, tileWidth);
     int numBlockTiles = utils::divUp((nblocks_total), tileBlocks);
@@ -436,7 +435,7 @@ void runSubBurstPatchDistance(
         auto outDistanceHeightView = outDistances.narrow(0, i, curHeightSize);
         auto outIndexHeightView = outIndices.narrow(1, i, curHeightSize);
 	auto burstHeightView = burst.narrow(2, i, paddedHeightSize);
-	auto subAveHeightView = subAve.narrow(1, i, paddedHeightSize);
+	auto subAveHeightView = subAve.narrow(1, i, curHeightSize);
 
 	// Tile WIDTH pixels
         for (int j = 0; j < width; j += tileWidth) {
@@ -454,7 +453,7 @@ void runSubBurstPatchDistance(
             auto outDistanceView = outDistanceHeightView.narrow(1, j, curWidthSize);
             auto outIndexView = outIndexHeightView.narrow(2, j, curWidthSize);
             auto burstView = burstHeightView.narrow(3, j, paddedWidthSize);
-	    auto subAveView = subAveHeightView.narrow(2, j, paddedWidthSize);
+	    auto subAveView = subAveHeightView.narrow(2, j, curWidthSize);
 
 	    for (int blk = 0; blk < nblocks_total; blk += tileBlocks) {
 	      if (InterruptCallback::is_interrupted()) {
@@ -518,12 +517,12 @@ void runSubBurstPatchDistance(
 	      // this "topK" selection is limited to a "curBlockSize" batch
 	      //
 
-	      // runBurstNnfSimpleBlockSelect(distanceBufView,
-	      // 				   blockLabelView,
-	      // 				   outDistanceView,
-	      // 				   outIndexView,
-	      // 				   valMean,
-	      // 				   false,k,streams[curStream]);
+	      runSubBurstNnfSimpleBlockSelect(distanceBufView,
+	      				      blockLabelView,
+	      				      outDistanceView,
+	      				      outIndexView,
+	      				      valMean,
+	      				      false,k,streams[curStream]);
 
 
 	      // auto indexingBuf = indexingBufs[curStream]

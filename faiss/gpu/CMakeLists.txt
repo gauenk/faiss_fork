@@ -58,6 +58,7 @@ set(FAISS_GPU_SRC
   impl/scan/IVFInterleaved1024.cu
   impl/scan/IVFInterleaved2048.cu
   utils/BurstNnfSimpleBlockSelect.cu
+  utils/SubBurstNnfSimpleBlockSelect.cu
   utils/NnfSimpleBlockSelect.cu
   utils/BlockIndices2Labels.cu
   utils/BurstBlockSelectFloat.cu
@@ -157,6 +158,7 @@ set(FAISS_GPU_HEADERS
   impl/VectorResidual.cuh
   impl/scan/IVFInterleavedImpl.cuh
   utils/BurstNnfSimpleBlockSelect.cuh
+  utils/SubBurstNnfSimpleBlockSelect.cuh
   utils/NnfSimpleBlockSelect.cuh
   utils/BlockIndices2Labels.cuh
   utils/BurstBlockSelectKernel.cuh
