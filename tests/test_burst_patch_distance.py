@@ -50,6 +50,7 @@ def compute_gt_burst(burst,pix_hw,flow,ps,nblocks):
         endW = startW + ps
         sliceW = slice(startW,endW)
 
+        # print(pix_hw,startH,startW,burst.shape)
         patch_t = burst[t,0,:,sliceH,sliceW]
         patches.append(patch_t)
 
@@ -68,17 +69,17 @@ def test_burst_nnf_sample():
     # h,w,c = 32,32,3
     # h,w,c = 16,16,3
     # h,w,c = 17,17,3
-    # h,w,c = 512,512,3
+    h,w,c = 512,512,3
     # h,w,c = 256,256,3
     # h,w,c = 128,128,3
     # h,w,c = 64,64,3
     # h,w,c = 15,15,2
     # h,w,c = 47,47,3
-    h,w,c = 32,32,3
+    # h,w,c = 32,32,3
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
     # ps,nblocks = 11,10
-    patchsize = 3
+    patchsize = 11
     nblocks = 3
     k = 3#(nblocks**2)**2
     gpuid = 0
@@ -123,7 +124,7 @@ def test_burst_nnf_sample():
     print(burst.shape)
     print(burst.max(),burst.min())
     noise = np.random.normal(loc=0,scale=0.2,size=(t,1,c,h,w)).astype(np.float32)
-    burst += torch.FloatTensor(noise).to(device)
+    # burst += torch.FloatTensor(noise).to(device)
     block = np.c_[-flow[:,1],flow[:,0]] # (dx,dy) -> (dy,dx) with "y" [0,M] -> [M,0]
     save_image("burst.png",burst)
     nframes,nimages,c,h,w = burst.shape
@@ -176,14 +177,14 @@ def test_burst_nnf_sample():
     #
     # ------------------------------
 
-    valMean = 0.
-    start_time = time.perf_counter()
-    nnf_vals,nnf_locs = sbnnf_utils.runBpSearch(burst, patchsize, nblocks,
-                                                1, valMean = valMean,
-                                                blockLabels=None)
-    runtimes.BpSearch = time.perf_counter() - start_time
-    vals.BpSearch = nnf_vals[:,0]
-    locs.BpSearch = nnf_locs[:,0]
+    # valMean = 0.
+    # start_time = time.perf_counter()
+    # nnf_vals,nnf_locs = sbnnf_utils.runBpSearch(burst, patchsize, nblocks,
+    #                                             1, valMean = valMean,
+    #                                             blockLabels=None)
+    # runtimes.BpSearch = time.perf_counter() - start_time
+    # vals.BpSearch = nnf_vals[:,0]
+    # locs.BpSearch = nnf_locs[:,0]
 
     # -----------------------------------
     #
@@ -193,24 +194,39 @@ def test_burst_nnf_sample():
 
     flow_fmt = rearrange(flow,'t two -> 1 1 t two')
     mode = bnnf_utils.evalAtFlow(burst, flow_fmt, patchsize,
-                                 nblocks, return_mode=True)
-    print("Optimal Values: [median]: %2.5e" % (mode))
-
-    pix_hw = [h//2,w//2]
-    # pix_hw = [h-1,w-1]
-    gt_dist = compute_gt_burst(burstPad,pix_hw,block,ps,nblocks)
-    print("GT :",gt_dist)
-
+                                 nblocks, return_mode=True,
+                                 tile_burst=False)
+    print("mode.shape ",mode.shape)
+    for h_i in range(h):
+        for w_i in range(w):
+            pix_hw = [h_i,w_i]
+            mode_hw = mode[h_i,w_i].item()
+            # print("Optimal Values: [median]: %2.5e" % (mode_hw))
+            # pix_hw = [1,1]
+            # pix_hw = [h//2,w//2]
+            # pix_hw = [h-1,w-1]
+            gt_dist = compute_gt_burst(burstPad,pix_hw,block,ps,nblocks)
+            # print("GT :",gt_dist)
+            # print(h_i,w_i)
+            diff = np.abs(gt_dist - mode_hw).item()
+            # if diff > 1e-5:
+            #     print(h_i,w_i,mode_hw,gt_dist,diff)
+            #     assert mode_hw > gt_dist," testing ineq"
+            assert np.abs(gt_dist - mode_hw) < 1e-5, "must be equal for all pix."
+            if h_i == h//2 and w_i == w//2:
+                print("Optimal Values: [median]: %2.5e" % (mode_hw))
+                print("GT: ",gt_dist)
+            break
 
     # ------------------------------------------
     #
-    #   Compute FAISS BurstNnf with Zero Ref
+    #     Compute FAISS SubBurstNnf
     #
     # ------------------------------------------
 
     valMean = gt_dist
     start_time = time.perf_counter()
-    _vals,_locs = sbnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = k,
+    _vals,_locs = bnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = k,
                                          valMean = valMean, blockLabels=None, ref=None)
     runtimes.SubBurst = time.perf_counter() - start_time
     vals.SubBurst = _vals[0][None,:] # include nframes 
@@ -229,7 +245,10 @@ def test_burst_nnf_sample():
     valMean = gt_dist#3.345
     start_time = time.perf_counter()
     _vals,_locs = bnnf_utils.runBurstNnf(burst, patchsize, nblocks, k = k,
-                                       valMean = valMean, blockLabels=None, ref=None)
+                                         valMean = valMean, blockLabels=None,
+                                         ref=None,
+                                         to_flow=False,
+                                         tile_burst=True)
     runtimes.Burst = time.perf_counter() - start_time
     vals.Burst = _vals[0][None,:] # include nframes 
     locs.Burst = _locs[0]
@@ -255,6 +274,7 @@ def test_burst_nnf_sample():
     #
     # -----------------------------------
 
+    # pix_hw = [1,1]
     # pix_hw = [h-1,w-1]
     pix_hw = [h//2,w//2]
     # pix_hw = [h//2+3,w//2-4]
@@ -306,7 +326,8 @@ def test_burst_nnf_sample():
     print("GT-Burst Output @ GT Flow: ",gt_dist)
     print("Burst Output @ Top1: ",top1_loc)
     print("GT Block",block)
-    assert np.sum(np.abs(gt_dist - top1_val)/gt_dist) < 1e-6, "vals must equal."
+    
+    assert np.sum(np.abs(gt_dist - top1_val)/(gt_dist+1e-8)) < 1e-6, "vals must equal."
     assert np.sum(np.abs(block - top1_loc)) < 1e-6, "locs must equal."
 
     flow_bll = np.array([[1,1],[1,1],[1,1]])

@@ -17,7 +17,7 @@ def runNnfBurstRecursive(_burst, clean, patchsize, nblocks, isize, k = 1,
                          valMean = 0., blockLabels=None, ref_t=None):
     wburst = _burst
     wclean = clean
-    niters = 10
+    niters = 2
     for i in range(niters):
         wburst = wburst.to(_burst.device)
         wclean = wclean.to(_burst.device)

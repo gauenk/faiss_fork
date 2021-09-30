@@ -79,7 +79,7 @@ __global__ void nnfl2NormRowMajor(
     int psSub1 = patchsize-1;
     int ps2 = patchsize*patchsize;
     IndexType dim = nftrs*ps2*nframes;
-    float nmlz = 1./(nftrs*ps2*nframes*1.0);
+    // float nmlz = 1./(nftrs*ps2*nframes*1.0);
     float inv_frames = 1./(nframes*1.0);
     int pad = patchsize/2 + nblocks/2;//utils::divDown(patchsize,2);
     TVec zero = ConvertTo<TVec>::to(0);
@@ -551,9 +551,9 @@ void runBurstNnfL2Norm(
         bool normSquared,
         cudaStream_t stream) {
     IndexType maxThreads = (IndexType)getMaxThreadsCurrentDevice();
-    constexpr int rowTileSize = 1;
-    constexpr int colTileSize = 1;
-    constexpr int blockTileSize = 8;
+    constexpr int rowTileSize = 2;
+    constexpr int colTileSize = 2;
+    constexpr int blockTileSize = 4;
 
 #define RUN_NNF_L2_ROW_MAJOR(TYPE_T, TYPE_TVEC, BURST)			\
     do {                                                                      \

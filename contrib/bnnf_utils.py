@@ -15,14 +15,29 @@ def rows_uniq_elems(a):
     a_sorted = torch.sort(a,axis=-1)
     return a[(a_sorted[...,1:] != a_sorted[...,:-1]).all(-1)]
 
-def evalAtFlow(burst, flow, patchsize, nblocks, return_mode=False):
+def tileBurst(burst,h,w,ps,nb):
+    t,c,hP,wP = burst.shape
+    hPP,wPP = h + 2*(nb//2),w+2*(nb//2)
+    unfold = torch.nn.Unfold(ps,1,0,1)
+    patches = unfold(burst)
+    print(h,w)
+    print(burst.shape)
+    print(patches.shape)
+    shape_str = 't (c ps1 ps2) (h w) -> t (ps1 ps2 c) h w'
+    patches = rearrange(patches,shape_str,ps1=ps,ps2=ps,h=hPP,w=wPP)
+    print(patches.shape)
+    return patches
+    
+
+def evalAtFlow(burst, flow, patchsize, nblocks,
+               return_mode=False, tile_burst=False):
     """
     Evaluate the code at the provided flow value.
 
     """
     vals,locs = [],[]
     valMean = 0. # defined to be zero for this fxn!
-    pad = patchsize//2 + nblocks
+    pad = patchsize//2 + nblocks//2
     nimages,nsamples,nframes,two = flow.shape
     nframes,nimages,c,h,w = burst.shape
     for i in range(nimages):
@@ -44,15 +59,18 @@ def evalAtFlow(burst, flow, patchsize, nblocks, return_mode=False):
                                     nblocks, k = nlabels,
                                     valMean = valMean,
                                     blockLabels=blockLabels,
-                                    fmt=False)
+                                    fmt=False,tile_burst=tile_burst)
 
         # -- get shape to remove boarder --
         one,vH,vW,vK = vals_i.shape
         # ccH = slice(pad,h-pad)
         # ccW = slice(pad,w-pad)
         # print(h//2,h//2+1)
-        ccH = slice(h//2+0,h//2+1)
-        ccW = slice(w//2+0,w//2+1)
+        ccH = slice(1,2)
+        ccW = slice(1,2)
+        ccH = slice(0,1000)
+        ccW = slice(0,1000)
+
 
         # ccH = slice(h-1,h)
         # ccW = slice(w-1,w)
@@ -74,13 +92,16 @@ def evalAtFlow(burst, flow, patchsize, nblocks, return_mode=False):
 
     if return_mode:
 
-        vals_cpu = vals[...,0].cpu().numpy().ravel()
+        print(vals.shape)
+        h = int(np.sqrt(vals.shape[0]))
+        vals_cpu = vals[...,0].cpu().numpy()#.ravel()
+        vals_cpu = rearrange(vals_cpu,'(h w) 1 -> h w',h=h)
         vmd = np.median(vals_cpu)
         delta = np.abs(vals_cpu - vmd)
-        print("vals_cpu.shape ",vals_cpu.shape)
-        vals_cpu = vals_cpu[np.where(delta < 1e2)]
+        # vals_cpu = vals_cpu[np.where(delta < 1e2)]
         vals_float = torch.FloatTensor(vals_cpu)
-        median = torch.median(vals_float).item()
+        median = vals_float
+        # median = torch.median(vals_float).item()
         # vals_long = torch.LongTensor(vals_cpu*1e4)
         # print("vals_long.shape ",vals_long.shape)
         # mode = torch.mode(vals_long).values.item() * 1e-4 
@@ -135,7 +156,8 @@ def evalAtFlow(burst, flow, patchsize, nblocks, return_mode=False):
 
 def runBurstNnf(burst, patchsize, nblocks, k = 1,
                 valMean = 0., blockLabels=None, ref=None,
-                to_flow=False, fmt=False, in_vals=None,in_locs=None):
+                to_flow=False, fmt=False, in_vals=None,in_locs=None,
+                tile_burst=False):
 
     # -- create faiss GPU resource --
     res = faiss.StandardGpuResources()
@@ -143,7 +165,12 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
     # -- get shapes for low-level exec of FAISS --
     nframes,nimages,c,h,w = burst.shape
     img_shape = (c,h,w)
+    device = burst.device
     if ref is None: ref = nframes//2
+
+    # # -- get block labels once for the burst if "None" --
+    # blockLabels,_ = getBlockLabels(blockLabels,nblocks,torch.long,
+    #                                device,True,nframes)
 
     # -- compute search "blockLabels" across image burst --
     vals,locs = [],[]
@@ -151,7 +178,13 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
 
         # -- create padded burst --
         burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
-        burstTiles = tileBurst(burstPad_i,patchsize,nblocks)
+        if tile_burst:
+            burstPad_i = tileBurst(burstPad_i,h,w,patchsize,nblocks)
+            img_shape = list(img_shape)
+            img_shape[0] = burstPad_i.shape[1]
+            input_ps = 1
+        else:
+            input_ps = patchsize
 
         # -- assign input vals and locs --
         vals_i,locs_i = in_vals,in_locs
@@ -161,9 +194,10 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
         # -- execute over search space! --
         vals_i,locs_i = _runBurstNnf(res, img_shape, burstPad_i,
                                      ref, vals_i, locs_i,
-                                     patchsize, nblocks,
+                                     input_ps, nblocks,
                                      k = k, valMean = valMean,
-                                     blockLabels=blockLabels)
+                                     blockLabels = blockLabels)
+
         vals.append(vals_i)
         locs.append(locs_i)
     vals = torch.stack(vals,dim=0)
@@ -224,7 +258,6 @@ def _runBurstNnf(res, img_shape, burst, ref, vals, locs, patchsize, nblocks, k =
     locs,locs_ptr,locs_type = getLocs(locs,h,w,k,device,is_tensor,nframes)
     bl,blockLabels_ptr = getBlockLabels(blockLabels,nblocks,locs.dtype,
                                        device,is_tensor,nframes)
-
     # print("bl")
     # print("-"*50)
     # for i in range(bl.shape[1]):

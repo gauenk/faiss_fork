@@ -61,7 +61,7 @@ namespace faiss {
 						reinterpret_cast<const T*>
 							       (args.subAve)),
 						stream,
-						{args.c,args.h,args.w});
+						{args.c,args.h+2*pad,args.w+2*pad});
       auto blockLabels = toDeviceTemporary<int, 5>(res,device,
 					    args.blockLabels,
 					    stream,

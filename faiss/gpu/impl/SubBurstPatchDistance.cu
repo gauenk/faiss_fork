@@ -96,8 +96,8 @@ void runSubBurstPatchDistance(
     FAISS_ASSERT(height == heightInd);
     FAISS_ASSERT(width == widthInd);
     FAISS_ASSERT(nftrs_sa == nftrs);
-    FAISS_ASSERT(height_sa == height);
-    FAISS_ASSERT(width_sa == width);
+    FAISS_ASSERT(height_sa == heightPad);
+    FAISS_ASSERT(width_sa == widthPad);
     FAISS_ASSERT(heightBl == height);
     FAISS_ASSERT(widthBl == width);
     FAISS_ASSERT(sub_nframes == subBl_nframes);
@@ -435,7 +435,7 @@ void runSubBurstPatchDistance(
         auto outDistanceHeightView = outDistances.narrow(0, i, curHeightSize);
         auto outIndexHeightView = outIndices.narrow(1, i, curHeightSize);
 	auto burstHeightView = burst.narrow(2, i, paddedHeightSize);
-	auto subAveHeightView = subAve.narrow(1, i, curHeightSize);
+	auto subAveHeightView = subAve.narrow(1, i, paddedHeightSize);
 
 	// Tile WIDTH pixels
         for (int j = 0; j < width; j += tileWidth) {
@@ -453,7 +453,7 @@ void runSubBurstPatchDistance(
             auto outDistanceView = outDistanceHeightView.narrow(1, j, curWidthSize);
             auto outIndexView = outIndexHeightView.narrow(2, j, curWidthSize);
             auto burstView = burstHeightView.narrow(3, j, paddedWidthSize);
-	    auto subAveView = subAveHeightView.narrow(2, j, curWidthSize);
+	    auto subAveView = subAveHeightView.narrow(2, j, paddedWidthSize);
 
 	    for (int blk = 0; blk < nblocks_total; blk += tileBlocks) {
 	      if (InterruptCallback::is_interrupted()) {
