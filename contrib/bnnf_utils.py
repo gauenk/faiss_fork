@@ -10,25 +10,6 @@ from torch_utils import using_stream
 from nnf_share import *
 # import nnf_utils
 
-
-def rows_uniq_elems(a):
-    a_sorted = torch.sort(a,axis=-1)
-    return a[(a_sorted[...,1:] != a_sorted[...,:-1]).all(-1)]
-
-def tileBurst(burst,h,w,ps,nb):
-    t,c,hP,wP = burst.shape
-    hPP,wPP = h + 2*(nb//2),w+2*(nb//2)
-    unfold = torch.nn.Unfold(ps,1,0,1)
-    patches = unfold(burst)
-    print(h,w)
-    print(burst.shape)
-    print(patches.shape)
-    shape_str = 't (c ps1 ps2) (h w) -> t (ps1 ps2 c) h w'
-    patches = rearrange(patches,shape_str,ps1=ps,ps2=ps,h=hPP,w=wPP)
-    print(patches.shape)
-    return patches
-    
-
 def evalAtFlow(burst, flow, patchsize, nblocks,
                return_mode=False, tile_burst=False):
     """
@@ -111,60 +92,17 @@ def evalAtFlow(burst, flow, patchsize, nblocks,
     else:
         return vals,locs
 
-# def runBurstNnfRandSubsets(burst, patchsize, nblocks, k = 1,
-#                            valMean = 0., blockLabels=None, ref=None,
-#                            to_flow=False, fmt=False):
-
-#     nframes,nimages,c,h,w = burst.shape
-#     subsizes = [5,5,5,5,]
-
-#     vals,locs = [],[]
-#     for i in range(nimages):
-#         vals_i,locs_i = None,None
-
-#         # -- get init blocks --
-#         blockRanges,currBlocks = []
-#         exh_blocks = exh_block_range(nimages,1,nframes,nblocks)
-#         vals,locs = nnf_utils.runNnfBurst(burst[:,[i]], patchsize, nblocks, k = 1,
-#                                           valMean = 0., blockLabels=None, ref_t=None)
-        
-
-#         # -- search random subset for each burst --
-#         for size in subsizes:
-#             rands = npr.choice(nframes,size=size,replace=False)
-#             frames = repeat(rands,'z -> 1 1 z')
-#             blockLabels = mesh_block_ranges(frames,blockRanges,curr_blocks,device)
-#             vals_i,locs_i = runBurstNnf(burst, patchsize, nblocks, k = k,
-#                                         valMean = valMean, blockLabels=blockLabels,
-#                                         vals=vals_i,locs=locs_i)
-#         vals.append(vals_i)
-#         locs.append(locs_i)
-#     vals = torch.stack(vals)
-#     locs = torch.stack(locs)
-    
-#     # -- format output --
-#     if to_flow:
-#         locs_y = locs[...,0]
-#         locs_x = locs[...,1]
-#         locs = torch.stack([locs_x,-locs_y],dim=-1)
-    
-#     if fmt:
-#         vals = rearrange(vals,'i h w k -> i (h w) k').cpu()
-#         locs = rearrange(locs,'i t h w k two -> k i (h w) t two').cpu().long()
-
-#     return curr_blocks
-
 def runBurstNnf(burst, patchsize, nblocks, k = 1,
                 valMean = 0., blockLabels=None, ref=None,
                 to_flow=False, fmt=False, in_vals=None,in_locs=None,
-                tile_burst=False):
+                tile_burst=False,img_shape=None):
 
     # -- create faiss GPU resource --
     res = faiss.StandardGpuResources()
 
     # -- get shapes for low-level exec of FAISS --
     nframes,nimages,c,h,w = burst.shape
-    img_shape = (c,h,w)
+    if img_shape is None: img_shape = [c,h,w]
     device = burst.device
     if ref is None: ref = nframes//2
 
@@ -178,6 +116,7 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
 
         # -- create padded burst --
         burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
+        print("[bnnf_utils, pre]: burstPad_i.shape ",burstPad_i.shape)
         if tile_burst:
             burstPad_i = tileBurst(burstPad_i,h,w,patchsize,nblocks)
             img_shape = list(img_shape)
@@ -186,6 +125,7 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
         else:
             input_ps = patchsize
 
+        print("[bnnf_utils, post]: burstPad_i.shape ",burstPad_i.shape)
         # -- assign input vals and locs --
         vals_i,locs_i = in_vals,in_locs
         if not(in_vals is None): vals_i = vals_i[i]
@@ -202,8 +142,8 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
         locs.append(locs_i)
     vals = torch.stack(vals,dim=0)
     # (nimages, h, w, k)
-    locs = torch.stack(locs,dim=0)
-    # (nimages, nframes, h, w, k, two)
+    locs = torch.stack(locs,dim=1)
+    # (nframes, nimages, h, w, k, two)
 
     if to_flow:
         locs_y = locs[...,0]
@@ -212,7 +152,7 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
     
     if fmt:
         vals = rearrange(vals,'i h w k -> i (h w) k').cpu()
-        locs = rearrange(locs,'i t h w k two -> k i (h w) t two').cpu().long()
+        locs = rearrange(locs,'t i h w k two -> k i (h w) t two').cpu().long()
 
     return vals,locs
 
@@ -250,7 +190,9 @@ def _runBurstNnf(res, img_shape, burst, ref, vals, locs, patchsize, nblocks, k =
     # -- prepare data --
     c, h, w = img_shape
     nframes = burst.shape[0]
+    print("[bnnf_utils._runBurstNnf, pre]: burst.shape ",burst.shape)
     burstPad = padBurst(burst,img_shape,patchsize,nblocks)
+    print("[bnnf_utils._runBurstNnf, post]: burstPad.shape ",burstPad.shape)
     burst_ptr,burst_type = getImage(burstPad)
     is_tensor = torch.is_tensor(burst)
     device = get_optional_device(burst)
@@ -258,6 +200,8 @@ def _runBurstNnf(res, img_shape, burst, ref, vals, locs, patchsize, nblocks, k =
     locs,locs_ptr,locs_type = getLocs(locs,h,w,k,device,is_tensor,nframes)
     bl,blockLabels_ptr = getBlockLabels(blockLabels,nblocks,locs.dtype,
                                        device,is_tensor,nframes)
+    print("[bnnf_utils]: burstPad.shape ",burstPad.shape)
+
     # print("bl")
     # print("-"*50)
     # for i in range(bl.shape[1]):

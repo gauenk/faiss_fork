@@ -87,8 +87,11 @@ void runSubBurstPatchDistance(
     auto nftrs_sa = subAve.getSize(0);
     auto height_sa = subAve.getSize(1);
     auto width_sa = subAve.getSize(2);
-    printf("HI\n");
     
+    // padded sizes
+    int heightPsHalf = height + 2*psHalf;
+    int widthPsHalf = width + 2*psHalf;
+
     // Assert same size
     FAISS_ASSERT(sub_nframes == nframes_outInd);
     FAISS_ASSERT(height == (heightPad-2*pad));
@@ -96,10 +99,10 @@ void runSubBurstPatchDistance(
     FAISS_ASSERT(height == heightInd);
     FAISS_ASSERT(width == widthInd);
     FAISS_ASSERT(nftrs_sa == nftrs);
-    FAISS_ASSERT(height_sa == heightPad);
-    FAISS_ASSERT(width_sa == widthPad);
-    FAISS_ASSERT(heightBl == height);
-    FAISS_ASSERT(widthBl == width);
+    FAISS_ASSERT(height_sa == height+2*psHalf);
+    FAISS_ASSERT(width_sa == width+2*psHalf);
+    FAISS_ASSERT(heightBl == height+2*psHalf);
+    FAISS_ASSERT(widthBl == width+2*psHalf);
     FAISS_ASSERT(sub_nframes == subBl_nframes);
     FAISS_ASSERT(kOut == k);
     FAISS_ASSERT(kOutInd == k);
@@ -247,70 +250,70 @@ void runSubBurstPatchDistance(
     //   //isContiguous
     // }
 
-    DeviceTensor<int, 3, true> indexingBuf_1(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_2(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_3(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_4(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_5(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_6(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_7(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_8(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_9(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_10(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_11(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_12(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_13(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_14(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_15(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true> indexingBuf_16(res,
-    	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, k});
-    DeviceTensor<int, 3, true>* indexingBufs[16] = {&indexingBuf_1,
-						    &indexingBuf_2,
-						    &indexingBuf_3,
-						    &indexingBuf_4,
-						    &indexingBuf_5,
-						    &indexingBuf_6,
-						    &indexingBuf_7,
-						    &indexingBuf_8,
-						    &indexingBuf_9,
-						    &indexingBuf_10,
-						    &indexingBuf_11,
-						    &indexingBuf_12,
-						    &indexingBuf_13,
-						    &indexingBuf_14,
-						    &indexingBuf_15,
-						    &indexingBuf_16,};
+    // DeviceTensor<int, 3, true> indexingBuf_1(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_2(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_3(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_4(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_5(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_6(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_7(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_8(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_9(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_10(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_11(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_12(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_13(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_14(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_15(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true> indexingBuf_16(res,
+    // 	makeTempAlloc(AllocType::Other, stream),
+    // 	{tileHeight, tileWidth, k});
+    // DeviceTensor<int, 3, true>* indexingBufs[16] = {&indexingBuf_1,
+    // 						    &indexingBuf_2,
+    // 						    &indexingBuf_3,
+    // 						    &indexingBuf_4,
+    // 						    &indexingBuf_5,
+    // 						    &indexingBuf_6,
+    // 						    &indexingBuf_7,
+    // 						    &indexingBuf_8,
+    // 						    &indexingBuf_9,
+    // 						    &indexingBuf_10,
+    // 						    &indexingBuf_11,
+    // 						    &indexingBuf_12,
+    // 						    &indexingBuf_13,
+    // 						    &indexingBuf_14,
+    // 						    &indexingBuf_15,
+    // 						    &indexingBuf_16,};
 
     //
     // Temporary memory space to *ave* a single batch of images
@@ -318,54 +321,57 @@ void runSubBurstPatchDistance(
 
     int tileHeightPad = tileHeight + 2*pad;
     int tileWidthPad = tileWidth + 2*pad;
+
+    int tileHeightPsHalf = tileHeight + 2*psHalf;
+    int tileWidthPsHalf = tileWidth + 2*psHalf;
     DeviceTensor<T, 4, true> aveBuf_1(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_2(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_3(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_4(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_5(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_6(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_7(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_8(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_9(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_10(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_11(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_12(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_13(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_14(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_15(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true> aveBuf_16(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeightPsHalf, tileWidthPsHalf});
     DeviceTensor<T, 4, true>* aveBufs[16];
     aveBufs[0] = &aveBuf_1;
     aveBufs[1] = &aveBuf_2;
@@ -427,15 +433,16 @@ void runSubBurstPatchDistance(
 
 	// create indices for height tiling
         int curHeightSize = std::min(tileHeight, height - i);
-	int paddedWidthSize = tileWidth + 2*(pad);
-	int paddedHeightSize = tileHeight + 2*(pad);
+	int paddedHeightSize = tileHeight + 2*pad;
 	paddedHeightSize = std::min(paddedHeightSize,heightPad - i);
+	int psHalfHeightSize = tileHeight + 2*psHalf;
+	psHalfHeightSize = std::min(psHalfHeightSize,heightPsHalf - i);
 
 	// create views from height tile 
         auto outDistanceHeightView = outDistances.narrow(0, i, curHeightSize);
         auto outIndexHeightView = outIndices.narrow(1, i, curHeightSize);
 	auto burstHeightView = burst.narrow(2, i, paddedHeightSize);
-	auto subAveHeightView = subAve.narrow(1, i, paddedHeightSize);
+	auto subAveHeightView = subAve.narrow(1, i, psHalfHeightSize);
 
 	// Tile WIDTH pixels
         for (int j = 0; j < width; j += tileWidth) {
@@ -446,14 +453,16 @@ void runSubBurstPatchDistance(
 
 	    // create indices for height tiling
             int curWidthSize = std::min(tileWidth, width - j);
-	    int paddedWidthSize = tileWidth + 2*(pad);
+	    int paddedWidthSize = tileWidth + 2*pad;
 	    paddedWidthSize = std::min(paddedWidthSize,widthPad - j);
+	    int psHalfWidthSize = tileWidth + 2*psHalf;
+	    psHalfWidthSize = std::min(psHalfWidthSize,widthPsHalf - j);
 
 	    // view from width tiling
             auto outDistanceView = outDistanceHeightView.narrow(1, j, curWidthSize);
             auto outIndexView = outIndexHeightView.narrow(2, j, curWidthSize);
             auto burstView = burstHeightView.narrow(3, j, paddedWidthSize);
-	    auto subAveView = subAveHeightView.narrow(2, j, paddedWidthSize);
+	    auto subAveView = subAveHeightView.narrow(2, j, psHalfWidthSize);
 
 	    for (int blk = 0; blk < nblocks_total; blk += tileBlocks) {
 	      if (InterruptCallback::is_interrupted()) {
@@ -467,10 +476,13 @@ void runSubBurstPatchDistance(
 	      auto curBlockSize = std::min(tileBlocks, nblocks_total - blk);
 	      // printf("(curHeightSize,curWidthSize,curBlockSize): (%d,%d,%d)\n",
 	      // 	     curHeightSize,curWidthSize,curBlockSize);
+	      // printf("(psHalfHeightSize,psHalfWidthSize,i,j): (%d,%d,%d,%d)\n",
+	      // 	     psHalfHeightSize,psHalfWidthSize,i,j);
+
 	      auto aveView = aveBufs[curStream]
 	      	->narrow(1, 0, curBlockSize)
-	      	.narrow(2, 0, curHeightSize)//+2*psHalf) // ?Do I use these pads?
-	      	.narrow(3,0, curWidthSize);//+2*psHalf);
+	      	.narrow(2, 0, psHalfHeightSize) // ?Do I use these pads?
+	      	.narrow(3,0, psHalfWidthSize);
 	      auto distanceBufView = distanceBufs[curStream]
 		->narrow(0, 0, curHeightSize)
 		.narrow(1, 0, curWidthSize)
@@ -481,13 +493,12 @@ void runSubBurstPatchDistance(
 	      //
 	      auto blockLabelView = blockLabels
 		.narrow(0, blk, curBlockSize)
-		.narrow(1, i, curHeightSize)
-		.narrow(2, j, curWidthSize);
+		.narrow(1, i, psHalfHeightSize)
+		.narrow(2, j, psHalfWidthSize);
 	      auto maskView = mask
 		.narrow(0, blk, curBlockSize)
-		.narrow(1, i, curHeightSize)
-		.narrow(2, j, curWidthSize);
-
+		.narrow(1, i, psHalfHeightSize)
+		.narrow(2, j, psHalfWidthSize);
 
 	      //
 	      // Compute Average 
@@ -497,18 +508,24 @@ void runSubBurstPatchDistance(
 	      			 aveView,total_nframes,patchsize,nblocks,
 	      			 streams[curStream]);
 
+	      // thrust::fill(thrust::cuda::par.on(streams[curStream]),
+	      // 		 aveView.data(),
+	      // 		 aveView.end(),
+	      // 		 0.);
+
+
 	      //
 	      // Execute Template Search
 	      //
 
 	      runSubBurstNnfL2Norm(burstView,
-				   aveView,
-				   blockLabelView,
-				   maskView,
-				   distanceBufView,
-				   // outDistanceView,
-				   patchsize,nblocks,true,
-				   streams[curStream]);
+	      			   aveView,
+	      			   blockLabelView,
+	      			   maskView,
+	      			   distanceBufView,
+	      			   // outDistanceView,
+	      			   patchsize,nblocks,true,
+	      			   streams[curStream]);
 
 	      // 
 	      //  Top K Selection 
@@ -521,8 +538,9 @@ void runSubBurstPatchDistance(
 	      				      blockLabelView,
 	      				      outDistanceView,
 	      				      outIndexView,
-	      				      valMean,
-	      				      false,k,streams[curStream]);
+	      				      valMean,false,k,
+					      patchsize,nblocks,
+	      				      streams[curStream]);
 
 
 	      // auto indexingBuf = indexingBufs[curStream]

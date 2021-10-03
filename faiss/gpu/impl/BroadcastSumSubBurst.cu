@@ -270,7 +270,7 @@ void runSubBurstAverage(
     FAISS_ASSERT(blocks.getSize(2) == ave.getSize(3)); // width
     FAISS_ASSERT(ave.getSize(1) == blocks.getSize(0)); // nblocks
     FAISS_ASSERT(blocks.getSize(4) == 2); // (x,y)
-    printf("ERROR!: the subAve just got padded but blocks [hxw] is not padded so...?\n");
+    // printf("ERROR!: the subAve just got padded but blocks [hxw] is not padded so...?\n");
 
     // constants
     constexpr int FtrTileSize = 1;

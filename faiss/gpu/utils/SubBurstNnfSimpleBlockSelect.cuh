@@ -17,7 +17,8 @@ namespace gpu {
         Tensor<int, 5, true>& inKeys,
         Tensor<float, 3, true>& outVals,
         Tensor<int, 5, true>& outKeys,
-	float valMean, bool comp_with_out,int k,
+	float valMean, bool comp_with_out,
+	int k, int patchsize, int nblocks,
         cudaStream_t stream);
 }
 }

@@ -7,7 +7,11 @@ from nnf_share import padBurst
 from .impl import _runBurstNnf
 
 def runBurstNnf(burst, patchsize, nblocks, k = 1,
-                valMean = 0., blockLabels=None, ref=None,
+                valMean = 0., subAve=None,
+                mask = None,
+                tframes = None,
+                blockLabels=None, ref=None,
+                img_shape = None,
                 to_flow=False, fmt=False, in_vals=None,in_locs=None):
 
     # -- create faiss GPU resource --
@@ -15,31 +19,38 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
 
     # -- get shapes for low-level exec of FAISS --
     nframes,nimages,c,h,w = burst.shape
-    img_shape = (c,h,w)
+    if img_shape is None: img_shape = (c,h,w)
     if ref is None: ref = nframes//2
-    subAve = None
-    total_nframes = nframes
+    if tframes is None: total_nframes = nframes
+    else: total_nframes = tframes
 
     # -- compute search "blockLabels" across image burst --
     vals,locs = [],[]
     for i in range(nimages):
 
         # -- create padded burst --
+        print("[subBurst.run_burst]: burst[:,i].shape ",burst[:,i].shape)
         burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
+        print("[subBurst.run_burst]: burstPad_i.shape ",burstPad_i.shape)
 
         # -- assign input vals and locs --
         vals_i,locs_i = in_vals,in_locs
         if not(in_vals is None): vals_i = vals_i[i]
         if not(in_locs is None): locs_i = locs_i[i]
+        if not(mask is None): mask_i = mask[i]
+        else: mask_i = None
+        if not(blockLabels is None): search_space_i = blockLabels[:,i]
+        else: search_space_i = None
 
         # -- execute over search space! --
         vals_i,locs_i = _runBurstNnf(res, img_shape,
                                      total_nframes,
                                      burstPad_i,
-                                     subAve, vals_i, locs_i,
+                                     subAve, mask_i,
+                                     vals_i, locs_i,
                                      patchsize, nblocks,
                                      k = k, valMean = valMean,
-                                     blockLabels=blockLabels)
+                                     blockLabels = search_space_i)
         vals.append(vals_i)
         locs.append(locs_i)
     vals = torch.stack(vals,dim=0)

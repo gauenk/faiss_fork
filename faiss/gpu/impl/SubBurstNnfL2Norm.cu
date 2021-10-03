@@ -149,13 +149,15 @@ __global__ void nnfl2NormRowMajor(
 		  IndexType fIdx = hDiv % nframes;
 
 		  // ref image indices
+		  IndexType blkRow = rowStart + row;
+		  IndexType blkCol = colStart + col;
 		  IndexType refBlk = blockStart + blk;
 		  IndexType refRow = rowStart + row + hIdx;
 		  IndexType refCol = colStart + col + wIdx;
 
 		  // blocks
-		  IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
-		  IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
+		  IndexType blRow = blocks[refBlk][blkRow][blkCol][fIdx][0];
+		  IndexType blCol = blocks[refBlk][blkRow][blkCol][fIdx][1];
 		  IndexType tRowStart = rowStartPix + blRow + row;
 		  IndexType tColStart = colStartPix + blCol + col;
 
@@ -199,13 +201,15 @@ __global__ void nnfl2NormRowMajor(
 		IndexType fIdx = hDiv % nframes;
 
 		// ref image indices
+		IndexType blkRow = rowStart + row;
+		IndexType blkCol = colStart + col;
 		IndexType refBlk = blockStart + blk;
 		IndexType refRow = rowStart + row + hIdx;
 		IndexType refCol = colStart + col + wIdx;
 
 		// blocks
-		IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
-		IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
+		IndexType blRow = blocks[refBlk][blkRow][blkCol][fIdx][0];
+		IndexType blCol = blocks[refBlk][blkRow][blkCol][fIdx][1];
 		IndexType tRowStart = rowStartPix + blRow + row;
 		IndexType tColStart = colStartPix + blCol + col;
 
@@ -290,13 +294,15 @@ __global__ void nnfl2NormRowMajor(
     		    IndexType fIdx = hDiv % nframes;
     		    
 		    // ref image indices
+		    IndexType blkRow = rowStart + row;
+		    IndexType blkCol = colStart + col;
 		    IndexType refBlk = blockStart + blk;
 		    IndexType refRow = rowStart + row + hIdx;
 		    IndexType refCol = colStart + col + wIdx;
 
     		    // blocks
-		    IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
-		    IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
+		    IndexType blRow = blocks[refBlk][blkRow][blkCol][fIdx][0];
+		    IndexType blCol = blocks[refBlk][blkRow][blkCol][fIdx][1];
 		    IndexType tRowStart = rowStartPix + blRow + row;
 		    IndexType tColStart = colStartPix + blCol + col;
     		    
@@ -386,13 +392,15 @@ __global__ void nnfl2NormRowMajor(
     		  IndexType fIdx = hDiv % nframes;
 
 		  // ref image indices
+		  IndexType blkRow = rowStart + row;
+		  IndexType blkCol = colStart + col;
 		  IndexType refBlk = blockStart + blk;
 		  IndexType refRow = rowStart + row + hIdx;
 		  IndexType refCol = colStart + col + wIdx;
 
     		  // blocks
-		  IndexType blRow = blocks[refBlk][refRow][refCol][fIdx][0];
-		  IndexType blCol = blocks[refBlk][refRow][refCol][fIdx][1];
+		  IndexType blRow = blocks[refBlk][blkRow][blkCol][fIdx][0];
+		  IndexType blCol = blocks[refBlk][blkRow][blkCol][fIdx][1];
 		  IndexType tRowStart = rowStartPix + blRow + row;
 		  IndexType tColStart = colStartPix + blCol + col;
     		  
@@ -563,7 +571,7 @@ void runSubBurstNnfL2Norm(
     IndexType maxThreads = (IndexType)getMaxThreadsCurrentDevice();
     constexpr int rowTileSize = 1;
     constexpr int colTileSize = 1;
-    constexpr int blockTileSize = 8;
+    constexpr int blockTileSize = 1;
 
 #define RUN_NNF_L2_ROW_MAJOR(TYPE_T, TYPE_TVEC, BURST)			\
     do {                                                                      \

@@ -1,12 +1,13 @@
 
 import torch
+import torchvision
 import faiss
 import numpy as np
 from einops import rearrange,repeat
 from torch_utils import using_stream
 from .utils import *
 
-def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, vals, locs,
+def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, mask, vals, locs,
                  patchsize, nblocks, k = 3, valMean = 0., blockLabels=None):
     """
     Compute the k nearest neighbors of a vector on one GPU without constructing an index
@@ -42,19 +43,44 @@ def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, vals, locs,
     c, h, w = img_shape
     burstPad = padBurst(burst,img_shape,patchsize,nblocks)
     sub_nframes,c,hP,wP = burstPad.shape
+    hsP = hP - 2*(nblocks//2)
+    wsP = wP - 2*(nblocks//2)
     burst_ptr,burst_type = getImage(burstPad)
     is_tensor = torch.is_tensor(burst)
     device = get_optional_device(burst)
     vals,vals_ptr = getVals(vals,h,w,k,device,is_tensor,None)
     locs,locs_ptr,locs_type = getLocs(locs,h,w,k,device,is_tensor,sub_nframes)
-    subAve,subAve_ptr,subAve_type = getSubAveTorch(subAve,hP,wP,c,device,t=None)
+    subAve,subAve_ptr,subAve_type = getSubAveTorch(subAve,hsP,wsP,c,device,t=None)
+    img_shape = (c,hsP,wsP)
     bl,blockLabels_ptr = getBlockLabelsFull(blockLabels,img_shape,nblocks,locs.dtype,
                                             device,is_tensor,sub_nframes)
-    # bl.shape = nsearch,h,w,nframes,two
+    bl = rearrange(bl,'l h w t two -> l t two h w')
+    # pad = (nblocks//2) + (patchsize//2)
+    pad = (patchsize//2)
+    print("bl.shape ",bl.shape)
+    # bl = torchvision.transforms.functional.pad(bl,(pad,)*4)
+    print("bl.shape ",bl.shape)
+    bl = rearrange(bl,'l t two h w -> l h w t two')
+    bl = bl.contiguous()
+    blockLabels_ptr,_ = torch2swig(bl)
+
     nsearch = bl.shape[0]
-    mask,mask_ptr = getMask(nsearch,h,w,sub_nframes,device,is_tensor)
+    if mask is None:
+        mask,mask_ptr = getMask(nsearch,h,w,
+                                sub_nframes,device,is_tensor)
+    else:
+        mask_ptr,_ = torch2swig(mask)
 
     assert bl.dim() == 5,"5 dimensional block labels"
+
+
+    print("[subBurst]: burst.shape ",burst.shape)
+    print("[subBurst]: burstPad.shape ",burstPad.shape)
+    print("vals.shape ",vals.shape)
+    print("locs.shape ",locs.shape)
+    print("subAve.shape ",subAve.shape)
+    print("masks.shape ",mask.shape)
+    print("bl.shape ",bl.shape)
 
 
     # print("bl")

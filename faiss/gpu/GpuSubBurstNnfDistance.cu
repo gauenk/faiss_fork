@@ -50,6 +50,7 @@ namespace faiss {
       auto stream = res->getDefaultStreamCurrentDevice();
       // std::cout << "Got the Stream!" << std::endl;
 
+      int psHalf = std::floor(args.ps/2);
       int pad = std::floor(args.ps/2) + std::floor(args.nblocks/2);
       auto burst = toDeviceTemporary<T, 4>(res,device,
 					   const_cast<T*>(reinterpret_cast<const T*>
@@ -61,12 +62,12 @@ namespace faiss {
 						reinterpret_cast<const T*>
 							       (args.subAve)),
 						stream,
-						{args.c,args.h+2*pad,args.w+2*pad});
+						{args.c,args.h+2*psHalf,args.w+2*psHalf});
       auto blockLabels = toDeviceTemporary<int, 5>(res,device,
 					    args.blockLabels,
 					    stream,
 					    {args.nblocks_total,
-					       args.h,args.w,
+					       args.h+2*psHalf,args.w+2*psHalf,
 					       args.sub_t,2});
       auto mask = toDeviceTemporary<bool, 4>(res,device,
 					     const_cast<bool*>(
@@ -74,7 +75,7 @@ namespace faiss {
 							    (args.mask)),
 					    stream,
 					    {args.nblocks_total,
-					       args.h,args.w,
+					       args.h+2*psHalf,args.w+2*psHalf,
 					       args.sub_t});
       auto tOutDistances = toDeviceTemporary<float, 3>(
 						       res,

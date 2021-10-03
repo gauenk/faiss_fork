@@ -123,9 +123,9 @@ __global__ void averageForEachBlock(
 		ave[ftrIndex][threadIdx.x][a_row][a_col]
 		  = Math<float>::mul(sum[0][0][0],inv_nframes);
 	      }
-	      }
 	    }
 	  }
+	}
     } else {
       
 #pragma unroll

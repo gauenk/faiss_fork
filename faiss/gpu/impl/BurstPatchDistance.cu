@@ -297,8 +297,8 @@ void runBurstPatchDistance(
     // Temporary memory space to *ave* a single batch of images
     //
 
-    int tileHeightPad = tileHeight + 2*pad;
-    int tileWidthPad = tileWidth + 2*pad;
+    int tileHeightPad = tileHeight + 2*psHalf;
+    int tileWidthPad = tileWidth + 2*psHalf;
     DeviceTensor<T, 4, true> aveBuf_1(res,
     	makeTempAlloc(AllocType::Other, stream),
     	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
@@ -448,12 +448,12 @@ void runBurstPatchDistance(
 	      // 	     curHeightSize,curWidthSize,curBlockSize);
 	      auto aveView = aveBufs[curStream]
 	      	->narrow(1, 0, curBlockSize)
-	      	.narrow(2, 0, curHeightSize + 2*psHalf)
-	      	.narrow(3,0, curWidthSize + 2*psHalf);
+	      	.narrow(2, 0, curHeightSize+2*psHalf) // + 2*psHalf .v.s padded
+	      	.narrow(3, 0, curWidthSize+2*psHalf); // + 2*psHalf .v.s padded
 	      auto distanceBufView = distanceBufs[curStream]
 		->narrow(0, 0, curHeightSize)
 		.narrow(1, 0, curWidthSize)
-		.narrow(2,0,curBlockSize);
+		.narrow(2, 0, curBlockSize);
 
 	      //
 	      // View for Blocks
@@ -467,6 +467,12 @@ void runBurstPatchDistance(
 	      runBurstAverage(burstView,blockLabelView,
 	      		      aveView,patchsize,nblocks,
 	      		      streams[curStream]);
+
+	      // thrust::fill(thrust::cuda::par.on(stream),
+	      // 		 aveView.data(),
+	      // 		 aveView.end(),
+	      // 		 0.);
+
 
 	      //
 	      // Execute Template Search

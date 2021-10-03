@@ -32,7 +32,8 @@ def runNnfBurstRecursive(_burst, clean, patchsize, nblocks, isize, k = 1,
     return vals,locs,wclean
 
 def runNnfBurst(_burst, patchsize, nblocks, k = 1,
-                valMean = 0., blockLabels=None, ref_t=None):
+                valMean = 0., blockLabels=None, ref_t=None,
+                img_shape = None):
 
     # -- setup res --
     res = faiss.StandardGpuResources()
@@ -43,7 +44,7 @@ def runNnfBurst(_burst, patchsize, nblocks, k = 1,
 
     # -- set padded images --
     nframes,nimages,c,h,w = burst.shape
-    img_shape = (c,h,w)
+    if img_shape is None: img_shape = (c,h,w)
     if ref_t is None: ref_t = nframes // 2
     if is_torch: dtype = torch.int32
     else: dtype = np.int32

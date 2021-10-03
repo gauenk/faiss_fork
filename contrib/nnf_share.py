@@ -6,6 +6,52 @@ from torch_utils import swig_ptr_from_UInt8Tensor,swig_ptr_from_HalfTensor,swig_
 
 # -- helpers --
 
+def loc_index_names(nimages,h,w,k,device):
+    npix = h*w
+    locs_ref = np.c_[np.unravel_index(np.arange(npix),(h,w))]
+    locs_ref = locs_ref.reshape(h,w,2)
+    locs_ref = repeat(locs_ref,'h w two -> i h w k two',i=nimages,k=k)
+    locs_ref = torch.IntTensor(locs_ref).to(device,non_blocking=True)
+    return locs_ref
+
+def rows_uniq_elems(a):
+    a_sorted = torch.sort(a,axis=-1)
+    return a[(a_sorted[...,1:] != a_sorted[...,:-1]).all(-1)]
+
+def padAndTileBatch(burst,ps,nb):
+    nframes,nimages,c,h,w = burst.shape
+    img_shape = (c,h,w)
+    tiled = []
+    for i in range(nimages):
+        burst_i = burst[:,i]
+        padded_i = padBurst(burst_i,img_shape,ps,nb)
+        tiled_i = tileBurst(padded_i,h,w,ps,nb)
+        tiled.append(tiled_i)
+    tiled = torch.stack(tiled,dim=1)
+    tiled = tiled.contiguous()
+    return tiled
+
+def tileBurst(burst,h,w,ps,nb):
+    # -- check if batch dim exists --
+    dim = burst.dim() 
+    if dim == 5:
+        t,i,c,hP,wP = burst.shape
+        burst = rearrange(burst,'t i c h w -> (t i) c h w')
+    else:
+        t,c,hP,wP = burst.shape
+
+    # -- primary fxn logic --
+    hPP,wPP = h + 2*(nb//2),w+ 2*(nb//2)
+    unfold = torch.nn.Unfold(ps,1,0,1)
+    patches = unfold(burst)
+    shape_str = 't (c ps1 ps2) (h w) -> t (ps1 ps2 c) h w'
+    patches = rearrange(patches,shape_str,ps1=ps,ps2=ps,h=hPP,w=wPP)
+
+    # -- unpack batch dim if it exists --
+    if dim == 5: patches = rearrange(patches,'(t i) f h w -> t i f h w',i=i)
+
+    return patches
+
 def get_optional_device(array):
     if torch.is_tensor(array):
         return array.device
@@ -154,7 +200,8 @@ def getMask(nsearch,h,w,sub_nframes,device,is_tensor):
 def getBlockLabelsFull(blockLabels,ishape,nblocks,dtype,device,is_tensor,t=None):
     blLabels,_ = getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t)
     c,h,w = ishape
-    blLabels = repeat(blLabels,'t l two -> l h w t two',h=h,w=w)
+    if blLabels.dim() == 3:
+        blLabels = repeat(blLabels,'t l two -> l h w t two',h=h,w=w)
     blockLabels_ptr = get_swig_ptr(blLabels)
     return blLabels,blockLabels_ptr
 
