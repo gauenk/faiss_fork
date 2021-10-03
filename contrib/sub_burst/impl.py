@@ -82,7 +82,6 @@ def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, mask, vals, locs,
     print("masks.shape ",mask.shape)
     print("bl.shape ",bl.shape)
 
-
     # print("bl")
     # print("-"*50)
     # for i in range(bl.shape[1]):

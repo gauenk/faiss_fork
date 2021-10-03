@@ -17,7 +17,7 @@ from sub_burst import runBurstNnf as runSubBurstNnf
 import sys
 sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib/")
 
-from .utils import create_search_ranges,warp_burst,compute_temporal_cluster,update_state,locs_frames2groups,compute_search_blocks
+from .utils import create_search_ranges,warp_burst,compute_temporal_cluster,update_state,locs_frames2groups,compute_search_blocks,pix2locs
 from .merge_search_ranges_numba import merge_search_ranges
 
 center_crop = torchvision.transforms.functional.center_crop
@@ -68,11 +68,14 @@ def runBpSearch(burst, patchsize, nblocks, k = 1,
 
     # -- 1.) run l2 local search --
     print("l2_nblocks: ",l2_nblocks)
-    vals,locs = nnf_utils.runNnfBurst(burst, patchsize, l2_nblocks,
+    vals,pix = nnf_utils.runNnfBurst(burst, patchsize, l2_nblocks,
                                       k=nparticles, valMean = l2_valMean,
                                       img_shape = None)
     vals = torch.mean(vals,dim=0).to(device)
-    locs = locs.to(device)
+    print("pix.shape ",pix.shape)
+    pix = pix.to(device)
+    locs = pix2locs(pix)
+    
     print(locs[:,0,15,16,:])
     print(locs[:,0,16,15,:])
     print(locs[:,0,16,16,:])
@@ -86,12 +89,10 @@ def runBpSearch(burst, patchsize, nblocks, k = 1,
     # -- 3.) warp burst to top location --
     print("burst.shape ",burst.shape)
     wburst = padAndTileBatch(burst,patchsize,nblocks)
-    plocs = padLocs(locs,patchsize//2)
+    ppix = padLocs(pix,patchsize//2)
     print("wburst.shape ",wburst.shape)
-    warped_burst = warp_burst(wburst,plocs,nblocks)
-    print("wburst.shape ",wburst.shape)
-    # wburst = wburst[0] # nparticles == 0
-    # wburst = padAndTileBatch(wburst,patchsize,nblocks)[None,:]
+    warped_burst = warp_burst(wburst,ppix,nblocks)
+    print("warped_burst.shape ",warped_burst.shape)
     img_shape[0] = wburst.shape[-3]
 
 
@@ -103,19 +104,21 @@ def runBpSearch(burst, patchsize, nblocks, k = 1,
 
     clK = [3,]*niters # -- scheduler for clustering --
     # search_blocks = compute_search_blocks(search_ranges,3) # -- matches clK --
-    K = nframes
+    # K = nframes
 
     for i in range(niters):
 
         # -- 1.) cluster each pixel across time --
-        # K = clK[i]
+        K = clK[i]
         # print("wburst.shape: ",wburst.shape)
+        print("[start] compute_temporal_cluster")
         cc_wburst = center_crop(warped_burst,pshape)
         names,means,weights,mask = compute_temporal_cluster(cc_wburst,K)
         wmeans = means * weights
         wmeans = wmeans[0] # nparticles == 1
         wmeans = wmeans.contiguous()
         cc_names = center_crop(names,ishape)
+        print("[end] compute_temporal_cluster")
 
         # print("search_ranges.shape ",search_ranges.shape)
         # print("msr.shape ",msr.shape)
@@ -130,12 +133,21 @@ def runBpSearch(burst, patchsize, nblocks, k = 1,
         # -- skip for now --
 
         # -- 3.) create combinatorial search blocks from search ranges  --
+        print("[start] merge_search_ranges")
         refG = 1
-        merged_search_ranges = merge_search_ranges(locs,cc_names,search_ranges,nblocks)
+        merged_search_ranges = merge_search_ranges(pix,cc_names,search_ranges,
+                                                   nblocks,pixAreLocs=False)
         search_blocks = compute_search_blocks(merged_search_ranges,refG)
+        print("search_blocks.shape: ",search_blocks.shape)
+        print("[end] merge_search_ranges")
+        print("Extrema of Search Blocks: ",search_blocks.max(),search_blocks.min())
         
         # -- 4.) exh srch over a clusters --
-        sub_vals,sub_locs = runSubBurstNnf(wburst,1,
+        in_burst = wmeans
+        # in_burst = warped_burst[0]
+        # in_burst = wburst
+        print("in_burst.shape: ",in_burst.shape)
+        sub_vals,sub_locs = runSubBurstNnf(in_burst,1,
                                            nblocks,k=1, # patchsize=1 since tiled
                                            mask=mask,
                                            blockLabels=search_blocks,
@@ -144,8 +156,14 @@ def runBpSearch(burst, patchsize, nblocks, k = 1,
         print("locs: ",locs.shape)
         print("sub_vals: ",sub_vals.shape)
         print("sub_locs: ",sub_locs.shape)
+        sub_locs = rearrange(sub_locs,'i t h w k two -> t i h w k two')
+        print("[post] sub_locs: ",sub_locs.shape)
+        print(vals[:,16,16])
+        print(sub_vals[:,16,16])
         vals = sub_vals
-        locs = sub_locs
+        locs = sub_locs + locs
+        print("iter: ",i)
+        print(sub_locs[:,:,16,16])
         
         # print("names: ",names.shape)
         # print(vals[...,32,32,0])
@@ -170,7 +188,7 @@ def runBpSearch(burst, patchsize, nblocks, k = 1,
         # wburst = warp_burst(wburst[0],wlocs,nblocks)
         # print(wburst.shape)
         # wburst = padAndTileBatch(wburst[0],patchsize,nblocks)[None,:]
-        break
+        # break
 
 
     return vals,locs

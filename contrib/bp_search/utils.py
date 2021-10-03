@@ -34,7 +34,7 @@ def create_search_ranges(nblocks,h,w,nframes):
 def compute_search_blocks(sranges,refG):
 
     # -- init shapes and smesh -- 
-    print(sranges.shape)
+    # print(sranges.shape)
     nsearch_per_group,nimages,h,w,ngroups,two = sranges.shape
     nsearch = nsearch_per_group**(ngroups-1) # since ref only has 1 elem
     smesh = torch.zeros(nsearch,nimages,h,w,ngroups,two).to(sranges.device)
@@ -45,6 +45,18 @@ def compute_search_blocks(sranges,refG):
 
     return smesh
     
+def pix2locs(pix):
+    nframes,nimages,h,w,k,two = pix.shape
+    lnames = loc_index_names(1,h,w,k,pix.device)
+    # -- (y,x) -> (x,y) --
+    pix_y = pix[...,0]
+    pix_x = pix[...,1]
+    pix = torch.stack([pix_x,pix_y],dim=-1)
+
+    # -- (x_new,y_new) -> (x_offset,y_offset) --
+    locs = pix - lnames
+    return locs
+
 
 def add_offset_to_search_ranges(locs,search_ranges):
     
@@ -112,9 +124,9 @@ def compute_temporal_cluster(wburst,K):
     
 def locs_frames2groups(pix,names,sranges,nblocks):
     
-    print("names.shape: ",names.shape)
-    print("pix.shape: ",pix.shape)
-    print("sranges.shape: ",sranges.shape)
+    # print("names.shape: ",names.shape)
+    # print("pix.shape: ",pix.shape)
+    # print("sranges.shape: ",sranges.shape)
     if pix.dim() == 5: pix = pix[:,None] # add batch dim if necessary
 
     # -- unpack shapes --
@@ -140,7 +152,7 @@ def locs_frames2groups(pix,names,sranges,nblocks):
     g_locs = torch.zeros((nelems,h,w,k,two))
     SILLY_BIG = 10000
     for groupID in range(ngroups):
-        print(locs.shape,names.shape)
+        # print(locs.shape,names.shape)
         x = torch.where(names == groupID,locs[...,0],SILLY_BIG)
         y = torch.where(names == groupID,locs[...,1],SILLY_BIG)
         
@@ -152,9 +164,9 @@ def locs_frames2groups(pix,names,sranges,nblocks):
 
 def slice_state_testing(locs,names,sranges,nblocks):
     
-    print("names.shape: ",names.shape)
-    print("locs.shape: ",locs.shape)
-    print("sranges.shape: ",sranges.shape)
+    # print("names.shape: ",names.shape)
+    # print("locs.shape: ",locs.shape)
+    # print("sranges.shape: ",sranges.shape)
     nframes,nimages,h,w = names.shape
     nelems,h,w,k,two = locs.shape
     nsearch,h,w,nelems,two = sranges.shape
@@ -222,7 +234,7 @@ def slice_state_testing(locs,names,sranges,nblocks):
         xslice = slice(x_tl,x_tl+nblocks)
         grid[yslice,xslice] += 1
 
-    print(grid)
+    # print(grid)
     shared = np.where(grid == nelems)
     xshared = shared[1] - nbHalf
     yshared = shared[0] - nbHalf
@@ -232,8 +244,8 @@ def slice_state_testing(locs,names,sranges,nblocks):
     # assert np.all(0 <= yshared),"all contained."
     # assert np.all(yshared < nblocks),"all contained."
 
-    print(xshared)
-    print(yshared)
+    # print(xshared)
+    # print(yshared)
     
 
 
@@ -244,8 +256,8 @@ def slice_state_testing(locs,names,sranges,nblocks):
     best_x = best_arangement[0]
     best_y = best_arangement[1]
 
-    print("best")
-    print(best_x,best_y)
+    # print("best")
+    # print(best_x,best_y)
 
     for t in range(nelems):
         x_i = x[t]
@@ -280,8 +292,8 @@ def slice_state_testing(locs,names,sranges,nblocks):
         off_x = bl_x - nbHalf
         off_y = -(bl_y - nbHalf)
         
-        print("x",x_bindex,x_tl,x_i,best_x,tmp_x,bl_x,off_x)
-        print("y",y_bindex,y_tl,y_i,best_y,tmp_y,bl_y,off_y)
+        # print("x",x_bindex,x_tl,x_i,best_x,tmp_x,bl_x,off_x)
+        # print("y",y_bindex,y_tl,y_i,best_y,tmp_y,bl_y,off_y)
 
 
 

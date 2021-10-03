@@ -204,8 +204,8 @@ def test_burst_nnf_sample():
     #                                       img_shape=img_shape)
     runtimes.BpSearch = time.perf_counter() - start_time
     vals.BpSearch = _vals[0][None,:]
-    # locs.BpSearch = _locs[:,0]
-    locs.BpSearch = _locs[0]
+    locs.BpSearch = _locs[:,0]
+    # locs.BpSearch = _locs[:]
 
     # -----------------------------------
     #

@@ -11,7 +11,9 @@ from numba import njit,jit,prange
 from pyutils import torch_to_numpy
 from nnf_share import loc_index_names
 
-def merge_search_ranges(pix,names,sranges,nblocks):
+from .utils import pix2locs
+
+def merge_search_ranges(pix,names,sranges,nblocks,pixAreLocs=False):
 
     # -- unpack shapes --
     nframes,nimages,h,w,k,two = pix.shape
@@ -19,22 +21,22 @@ def merge_search_ranges(pix,names,sranges,nblocks):
     nframes,nimages,hN,wN,one = names.shape
     names = names[...,0]
     nsearch,nimages,h,w,nelems,two = sranges.shape
-    lnames = loc_index_names(1,h,w,k,pix.device)
     nblocks2 = nblocks*nblocks
     nbHalf = nblocks//2
     gsize = (nblocks + 2 * nbHalf)**2
 
-    # -- (y,x) -> (x,y) --
-    pix_y = pix[...,0]
-    pix_x = pix[...,1]
-    pix = torch.stack([pix_x,pix_y],dim=-1)
+    # -- convert pix to locs --
+    if not(pixAreLocs):
+        locs = pix2locs(pix)
+    else:
+        locs = pix
 
-    # -- (x_new,y_new) -> (x_offset,y_offset) --
-    locs = pix - lnames
+    # -- misc --
     locs = locs[...,0,:]
     assert h == hN, f"[names and locs] two sizes must match: {h} vs {hN}"
     assert w == wN, f"[names and locs] two sizes must match: {w} vs {wN}"
 
+    
     # -- cuda gpuid --
     gpuid = pix.device.index
     refT = nframes//2
@@ -79,21 +81,21 @@ def merge_search_ranges(pix,names,sranges,nblocks):
     glocs = torch.stack(glocs)
     msr = torch.stack(merged_search_ranges,dim=1) # nimages,nsearch,h,w,ngroups,two
     # print(msr)
-    print(msr.shape)
-    print(locs.shape)
-    for i in range(h):
-        for j in range(w):
-            if i == 16 and j == 16:
-                print("--")
-                print(i,j)
-                print("-- msr --")
-                print(msr[:,:,i,j])
-                print("-- search ranges --")
-                print(sranges[:,:,i,j])
-                print("-- locs --")
-                print(locs[:,0,i,j])
-                print("-- offsets --")
-                print(offsets[:,0,i,j])
+    # print(msr.shape)
+    # print(locs.shape)
+    # for i in range(h):
+    #     for j in range(w):
+    #         if i == 16 and j == 16:
+    #             print("--")
+    #             print(i,j)
+    #             print("-- msr --")
+    #             print(msr[:,:,i,j])
+    #             print("-- search ranges --")
+    #             print(sranges[:,:,i,j])
+    #             print("-- locs --")
+    #             print(locs[:,0,i,j])
+    #             print("-- offsets --")
+    #             print(offsets[:,0,i,j])
 
     return msr#,offsets
 
