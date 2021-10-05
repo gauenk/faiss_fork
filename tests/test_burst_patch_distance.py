@@ -31,7 +31,7 @@ import nnf_utils as nnf_utils
 import bnnf_utils as bnnf_utils
 import sub_burst as sbnnf_utils
 from bp_search import runBpSearch
-from nnf_share import padAndTileBatch,padBurst,tileBurst
+from nnf_share import padAndTileBatch,padBurst,tileBurst,pix2locs
 
 def compute_gt_burst(burst,pix_hw,flow,ps,nblocks):
     psHalf = ps//2
@@ -69,7 +69,10 @@ def set_seed(seed):
 def test_burst_nnf_sample():
 
     # -- settings --
-    seed = 234
+    # seed = 234
+    seed = 345
+    # seed = 456
+    # seed = 678
     set_seed(seed)
 
     
@@ -80,14 +83,14 @@ def test_burst_nnf_sample():
     # h,w,c = 512,512,3
     # h,w,c = 256,256,3
     # h,w,c = 128,128,3
-    # h,w,c = 64,64,2
+    h,w,c = 64,64,2
     # h,w,c = 15,15,2
     # h,w,c = 47,47,3
-    h,w,c = 32,32,3
+    # h,w,c = 32,32,3
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
     # ps,nblocks = 11,10
-    patchsize = 11
+    patchsize = 3
     nblocks = 3
     k = 3#(nblocks**2)**2
     gpuid = 0
@@ -100,7 +103,7 @@ def test_burst_nnf_sample():
     # -- apply dynamic xform --
     dynamic_info = edict()
     dynamic_info.mode = 'global'
-    dynamic_info.nframes = 3
+    dynamic_info.nframes = 4
     dynamic_info.ppf = 1
     dynamic_info.frame_size = [h,w]
     dyn_xform = get_dynamic_transform(dynamic_info,None)
@@ -129,7 +132,7 @@ def test_burst_nnf_sample():
     device = burst.device
 
     # -- format data --
-    noise = np.random.normal(loc=0,scale=0.2,size=(t,1,c,h,w)).astype(np.float32)
+    noise = np.random.normal(loc=0,scale=0.19,size=(t,1,c,h,w)).astype(np.float32)
     burst += torch.FloatTensor(noise).to(device)
     block = np.c_[-flow[:,1],flow[:,0]] # (dx,dy) -> (dy,dx) with "y" [0,M] -> [M,0]
     save_image("burst.png",burst)
@@ -142,8 +145,8 @@ def test_burst_nnf_sample():
     # -- add padding --
     t,b,c,h,w = burst.shape
     burstPad,offset = bnnf_utils.padBurst(burst[:,0],(c,h,w),ps,nblocks)[:,None],2
-    print(burst.shape)
-    print(burstPad.shape)
+    print("original burst ",burst.shape)
+    print("pad no tile ",burstPad.shape)
 
     # -- get block labels --
     blockLabels,_ = bnnf_utils.getBlockLabels(None,nblocks,np.float32,
@@ -175,7 +178,40 @@ def test_burst_nnf_sample():
                                               blockLabels=None)
     runtimes.L2Local = time.perf_counter() - start_time
     vals.L2Local = nnf_vals[:,0]
-    locs.L2Local = nnf_locs[:,0]
+    locs.L2Local = pix2locs(nnf_locs)[:,0]
+
+    # ------------------------------------------
+    #
+    #     Compute FAISS SubBurstNnf
+    #
+    # ------------------------------------------
+
+    print("-"*30)
+    print("Sub Burst")
+    print("-"*30)
+    gt_dist = 0.
+    valMean = gt_dist
+    start_time = time.perf_counter()
+    _vals,_locs = bnnf_utils.runBurstNnf(burst, patchsize,
+                                          nblocks, k = k,
+                                          valMean = valMean,
+                                          blockLabels=None,
+                                          ref=None)
+    runtimes.SubBurst = time.perf_counter() - start_time
+    vals.SubBurst = _vals[0][None,:] # include nframes 
+    locs.SubBurst = _locs[:,0]
+    # locs.SubBurst = _locs[0]
+    print(_locs.shape)
+    print("[locs.SubBurst] @ (0,0): \n",locs.SubBurst[:,0,0,0])
+    print("[locs.SubBurst] @ (0,1): \n",locs.SubBurst[:,0,1,0])
+    print("[locs.SubBurst] @ (16,16): \n",locs.SubBurst[:,16,16,0])
+
+    print("vals.shape ",vals.SubBurst.shape)
+    print("[vals.SubBurst] @ (0,0): \n",vals.SubBurst[:,0,0,0])
+    print("[vals.SubBurst] @ (0,1): \n",vals.SubBurst[:,0,1,0])
+    print("[vals.SubBurst] @ (16,16): \n",vals.SubBurst[:,16,16,0])
+
+    print("-"*30)
 
     # ------------------------------
     #
@@ -184,16 +220,15 @@ def test_burst_nnf_sample():
     # ------------------------------
 
     valMean = 0.
-
-    # img_shape = list(burst.shape[-3:])
-    # img_shape = list(img_shape)
-    # print("burst.shape ",burst.shape)
-    # burstPad_0 = padBurst(burst[:,0],img_shape,patchsize,nblocks)
-    # print("padded burst.shape ",burstPad_0.shape)
-    # wburst = tileBurst(burstPad_0,h,w,patchsize,nblocks)[:,None]
-    # # wburst = padAndTileBatch(burst,patchsize,nblocks)
-    # img_shape[0] = wburst.shape[-3]
-    # print("wburst.shape ",wburst.shape)
+    img_shape = list(burst.shape[-3:])
+    img_shape = list(img_shape)
+    print("burst.shape ",burst.shape)
+    burstPad_0 = padBurst(burst[:,0],img_shape,patchsize,nblocks)
+    print("padded burst.shape ",burstPad_0.shape)
+    wburst = tileBurst(burstPad_0,h,w,patchsize,nblocks)[:,None]
+    # wburst = padAndTileBatch(burst,patchsize,nblocks)
+    img_shape[0] = wburst.shape[-3]
+    print("wburst.shape ",wburst.shape)
     start_time = time.perf_counter()
     _vals,_locs = runBpSearch(burst, patchsize, nblocks,
                               k=k, valMean = valMean,
@@ -202,10 +237,14 @@ def test_burst_nnf_sample():
     #                                       k=3, valMean = valMean,
     #                                       blockLabels=None,
     #                                       img_shape=img_shape)
+    # _vals,_locs = sbnnf_utils.runBurstNnf(burst, patchsize, nblocks,
+    #                                       k=3, valMean = valMean,
+    #                                       blockLabels=None,
+    #                                       img_shape=None)
     runtimes.BpSearch = time.perf_counter() - start_time
     vals.BpSearch = _vals[0][None,:]
     locs.BpSearch = _locs[:,0]
-    # locs.BpSearch = _locs[:]
+    # locs.BpSearch = _locs[0]
 
     # -----------------------------------
     #
@@ -217,11 +256,25 @@ def test_burst_nnf_sample():
     mode = bnnf_utils.evalAtFlow(burst, flow_fmt, patchsize,
                                  nblocks, return_mode=True,
                                  tile_burst=False)
+    h,w = burst.shape[-2:]
+    locs_img = repeat(flow,'t two -> t 1 h w 1 two',h=h,w=w)
+    print("locs_img.shape ",locs_img.shape)
+    # sub_vals,e_locs = sbnnf_utils.evalAtLocs(burst,
+    #                                          locs_img, patchsize,
+    #                                          nblocks,
+    #                                          img_shape=img_shape)
+    sub_vals,e_locs = sbnnf_utils.evalAtLocs(wburst,
+                                             locs_img, 1,
+                                             nblocks,
+                                             img_shape=img_shape)
+                                             
+
     print("mode.shape ",mode.shape)
     for h_i in range(h):
         for w_i in range(w):
             break
             pix_hw = [h_i,w_i]
+            sub_hw = sub_vals[0,h_i,w_i,0]
             mode_hw = mode[h_i,w_i].item()
             # print("Optimal Values: [median]: %2.5e" % (mode_hw))
             # pix_hw = [1,1]
@@ -235,6 +288,7 @@ def test_burst_nnf_sample():
             #     print(h_i,w_i,mode_hw,gt_dist,diff)
             #     assert mode_hw > gt_dist," testing ineq"
             assert np.abs(gt_dist - mode_hw) < 1e-5, "must be equal for all pix."
+            assert np.abs(gt_dist - sub_hw) < 1e-5, "must be equal for all pix."
             cond1 = h_i == h//2 and w_i == w//2
             cond2 = h_i == 0 and w_i == 0
             conds = cond1 or cond2
@@ -243,26 +297,6 @@ def test_burst_nnf_sample():
                 print("GT: ",gt_dist)
     gt_dist = 0.
 
-    # ------------------------------------------
-    #
-    #     Compute FAISS SubBurstNnf
-    #
-    # ------------------------------------------
-
-    print("-"*30)
-    print("Sub Burst")
-    print("-"*30)
-    valMean = gt_dist
-    start_time = time.perf_counter()
-    _vals,_locs = sbnnf_utils.runBurstNnf(burst, patchsize,
-                                          nblocks, k = k,
-                                          valMean = valMean,
-                                          blockLabels=None,
-                                          ref=None)
-    runtimes.SubBurst = time.perf_counter() - start_time
-    vals.SubBurst = _vals[0][None,:] # include nframes 
-    locs.SubBurst = _locs[:,0]
-    print("-"*30)
 
     # -----------------------------------
     #
@@ -305,7 +339,32 @@ def test_burst_nnf_sample():
     # pix_hw = [h//2+3,w//2-4]
     pix_hw_list = [[h//2,w//2],[h//2-1,w//2],[h//2,w//2-1],[h//2+1,w//2],
                    [h//2,w//2+1],[h//2-1,w//2+1],[h//2+1,w//2-1],[0,0],[0,1],
-                   [1,0],[1,1],[h-1,w-1],[h-2,w-1],[h-1,w-2],[h-2,w-2]]
+                   [1,0],[1,1],[h-1,w-1],[h-2,w-1],[h-1,w-2],[h-2,w-2],[h-3,w-3]]
+    interior_pad = nblocks//2+patchsize//2+3
+    neqImage = torch.zeros(h,w)
+    for i in range(interior_pad,h-interior_pad):
+        for j in range(interior_pad,w-interior_pad):
+            for key1 in vals:
+                if key1 == "L2Local": continue
+                v_key1 = vals[key1][:,i,j,0]
+                l_key1 = locs[key1][:,i,j,0]
+                for key2 in vals:
+                    if key2 == "L2Local": continue
+                    if key1 == key2: continue
+                    v_key2 = vals[key2][:,i,j,0]
+                    l_key2 = locs[key2][:,i,j,0]
+
+                    delta = torch.sum(torch.abs(v_key1 - v_key2)).item()
+                    if delta > 1e-5:
+                        if key2 == "BpSearch":
+                            print(i,j,key1,key2,v_key1,v_key2,l_key1,l_key2)
+                            neqImage[i,j] = 1.
+                        elif key1 != "BpSearch" and key2 != "BpSearch":
+                            print(i,j,v_key1,v_key2,delta,key1,key2)
+                    assert delta < 1e-5, "The outputs must agree on interior!"
+    save_image(neqImage[None,:],f"neqImage_{seed}.png")
+
+
     for pix_hw in pix_hw_list:
         print(pix_hw)
         gt_dist = compute_gt_burst(burstPad,pix_hw,block,ps,nblocks)
@@ -314,8 +373,33 @@ def test_burst_nnf_sample():
         print("SubBurst-L2-Local Output: ",vals.SubBurst[:,pix_hw[0],pix_hw[1],:])
         print("BpSearch Output: ",vals.BpSearch[:,pix_hw[0],pix_hw[1],:])
         print("GT Output: ",gt_dist)
+
     
+        print("[Locs] Our-L2-Local: ",locs.L2Local[:,pix_hw[0],pix_hw[1],0])
+        print("[Locs] Burst-L2-Local: ",locs.Burst[:,pix_hw[0],pix_hw[1],0])
+        print("[Locs] SubBurst-L2-Local: ",locs.SubBurst[:,pix_hw[0],pix_hw[1],0])
+        print("[Locs] BpSearch: ",locs.BpSearch[:,pix_hw[0],pix_hw[1],0])
+        # print("GT Output: ",gt_dist)
+
+
+    pix_hw = [0,0]
+    bp_top1_loc = locs.BpSearch[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    b_top1_loc = locs.Burst[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    l2_top1_loc = locs.L2Local[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    print("BpSearch Loc: ",bp_top1_loc)
+    print("Burst Loc: ",b_top1_loc)
+    print("L2 Loc: ",l2_top1_loc)
+
+    pix_hw = [16,16]
+    bp_top1_loc = locs.BpSearch[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    b_top1_loc = locs.Burst[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    l2_top1_loc = locs.L2Local[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
+    print("BpSearch Loc: ",bp_top1_loc)
+    print("Burst Loc: ",b_top1_loc)
+    print("L2 Loc: ",l2_top1_loc)
+
     pix_hw = [h//2,w//2]
+    # pix_hw = [h//2,w//2]
     vBurst = vals.Burst[:,pix_hw[0],pix_hw[1],:].cpu().numpy()[0]
     vSubBurst = vals.SubBurst[:,pix_hw[0],pix_hw[1],:].cpu().numpy()[0]
     iBurstValid = np.where(vBurst < 1e10)

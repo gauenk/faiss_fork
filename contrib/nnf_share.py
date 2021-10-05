@@ -1,10 +1,86 @@
 import torch
+import torchvision
 import faiss
 import numpy as np
 from einops import rearrange,repeat
 from torch_utils import swig_ptr_from_UInt8Tensor,swig_ptr_from_HalfTensor,swig_ptr_from_FloatTensor,swig_ptr_from_IntTensor,swig_ptr_from_IndicesTensor,swig_ptr_from_BoolTensor
+th_pad = torchvision.transforms.functional.pad
+
+# -- project imports --
+import sys
+sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib")
+from align.xforms import align_from_pix,align_from_flow
+
 
 # -- helpers --
+
+def warp_burst_from_pix(burst,pix,nblocks):
+
+    # -- block ranges per pixel --
+    nframes,nimages,h,w,k,two = pix.shape
+    nparticles = k
+    pix = rearrange(pix,'t i h w p two -> p i (h w) t two')
+
+    # -- create offsets --
+    warps = []
+    for p in range(nparticles):
+        warped = align_from_pix(burst,pix[p],nblocks)
+        warps.append(warped)
+    warps = torch.stack(warps).to(burst.device)
+
+    return warps
+
+def warp_burst_from_locs(burst,locs,patchsize,isize):
+
+    # -- block ranges per pixel --
+    nframes,nimages,h,w,k,two = locs.shape
+    nparticles = k
+
+    # -- locs 2 flow --
+    flows = locs2flow(locs)
+    flows = rearrange(flows,'t i h w p two -> p i (h w) t two')
+
+    # -- create offsets --
+    warps = []
+    for p in range(nparticles):
+        warped = align_from_flow(burst,flows[p],patchsize,isize=isize)
+        warps.append(warped)
+    warps = torch.stack(warps).to(burst.device)
+
+    return warps
+
+def padLocs(locs,pad,mode='constant'):
+    nframes,nimages,h,w,k,two = locs.shape
+    locs = rearrange(locs,'t i h w k two -> t i k two h w')
+    # h,w = locs.shape[-2:]
+    plocs = th_pad(locs,(pad,)*4,padding_mode='constant')
+    # -- extend edge to all boarder --
+    if mode == 'extend':
+        plocs[...,:pad,:] = plocs[...,[pad],:]
+        plocs[...,:,:pad] = plocs[...,:,[pad]]
+        plocs[...,h+pad:,:] = plocs[...,[h+pad-1],:]
+        plocs[...,:,w+pad:] = plocs[...,:,[w+pad-1]]
+    plocs = rearrange(plocs,'t i k two h w -> t i h w k two')
+    return plocs
+
+def locs2flow(locs):
+    # flows = rearrange(locs,'t i h w p two -> p i (h w) t two')
+    flows_y = -locs[...,0]
+    flows_x = locs[...,1]
+    flows = torch.stack([flows_x,flows_y],dim=-1)
+    return flows
+
+def pix2locs(pix):
+    nframes,nimages,h,w,k,two = pix.shape
+    lnames = loc_index_names(1,h,w,k,pix.device)
+    # -- (y,x) -> (x,y) --
+    pix_y = pix[...,0]
+    pix_x = pix[...,1]
+    pix = torch.stack([pix_x,pix_y],dim=-1)
+
+    # -- (x_new,y_new) -> (x_offset,y_offset) --
+    locs = pix - lnames
+    return locs
 
 def loc_index_names(nimages,h,w,k,device):
     npix = h*w
@@ -202,17 +278,21 @@ def getBlockLabelsFull(blockLabels,ishape,nblocks,dtype,device,is_tensor,t=None)
     c,h,w = ishape
     if blLabels.dim() == 3:
         blLabels = repeat(blLabels,'t l two -> l h w t two',h=h,w=w)
+    elif blLabels.dim() == 5:
+        blLabels = flip_array_like(blLabels,1) # we didn't actually want to flip
     blockLabels_ptr = get_swig_ptr(blLabels)
     return blLabels,blockLabels_ptr
 
 def getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t=None):
     blockLabels = getBlockLabelsNumpy(blockLabels,nblocks,dtype,t)
-    blockLabels = flip_array_like(blockLabels,1)
+    blockLabels = flip_array_like(blockLabels,1)# TODO: why flip dim 1??
     if not(torch.is_tensor(blockLabels)) and is_tensor:
         if device != 'cpu':
             blockLabels = torch.cuda.IntTensor(blockLabels,device=device)
         else:
             blockLabels = torch.IntTensor(blockLabels,device=device)
+    if is_tensor:
+        blockLabels = blockLabels.contiguous()
     blockLabels_ptr = get_swig_ptr(blockLabels)
     return blockLabels,blockLabels_ptr
 

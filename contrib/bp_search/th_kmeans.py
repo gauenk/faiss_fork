@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 from pykeops.torch import LazyTensor
 
 
-def KMeans(x, K=10, Niter=10, verbose=False):
+def KMeans(x, K=10, Niter=10, verbose=False, randDist=0.):
     """Implements Lloyd's algorithm for the Euclidean metric."""
 
     if K > x.shape[1]: K = x.shape[1]
@@ -17,6 +17,8 @@ def KMeans(x, K=10, Niter=10, verbose=False):
     B, N, D = x.shape  # num batches, Number of samples, dimension of the ambient space
 
     c = x[:, :K, :].clone()  # Simplistic initialization for the centroids
+
+    if randDist > 0: x = torch.normal(x,randDist)
 
     x_i = LazyTensor(x.view(B, N, 1, D))  # (B, N, 1, D) samples
     c_j = LazyTensor(c.view(B, 1, K, D))  # (B, 1, K, D) centroids

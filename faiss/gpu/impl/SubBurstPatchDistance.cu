@@ -481,7 +481,7 @@ void runSubBurstPatchDistance(
 
 	      auto aveView = aveBufs[curStream]
 	      	->narrow(1, 0, curBlockSize)
-	      	.narrow(2, 0, psHalfHeightSize) // ?Do I use these pads?
+	      	.narrow(2, 0, psHalfHeightSize)
 	      	.narrow(3,0, psHalfWidthSize);
 	      auto distanceBufView = distanceBufs[curStream]
 		->narrow(0, 0, curHeightSize)

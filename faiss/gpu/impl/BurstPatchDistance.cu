@@ -448,8 +448,8 @@ void runBurstPatchDistance(
 	      // 	     curHeightSize,curWidthSize,curBlockSize);
 	      auto aveView = aveBufs[curStream]
 	      	->narrow(1, 0, curBlockSize)
-	      	.narrow(2, 0, curHeightSize+2*psHalf) // + 2*psHalf .v.s padded
-	      	.narrow(3, 0, curWidthSize+2*psHalf); // + 2*psHalf .v.s padded
+	      	.narrow(2, 0, curHeightSize+2*psHalf)
+	      	.narrow(3, 0, curWidthSize+2*psHalf);
 	      auto distanceBufView = distanceBufs[curStream]
 		->narrow(0, 0, curHeightSize)
 		.narrow(1, 0, curWidthSize)

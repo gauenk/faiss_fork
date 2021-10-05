@@ -51,18 +51,36 @@ def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, mask, vals, locs,
     vals,vals_ptr = getVals(vals,h,w,k,device,is_tensor,None)
     locs,locs_ptr,locs_type = getLocs(locs,h,w,k,device,is_tensor,sub_nframes)
     subAve,subAve_ptr,subAve_type = getSubAveTorch(subAve,hsP,wsP,c,device,t=None)
-    img_shape = (c,hsP,wsP)
+
+    # print("(31,18)")
+    # sb_mid = blockLabels[:,31,18,:,:]
+    # print(sb_mid[:,0].max(),sb_mid[:,0].min())
+    # print("0: ",sb_mid[:,0,0].max(),sb_mid[:,0,0].min())
+    # print("1: ",sb_mid[:,0,1].max(),sb_mid[:,0,1].min())
+
+    # img_shape = (c,hsP,wsP)
+    psHalf = patchsize//2
+    img_shape = (c,h+2*psHalf,w+2*psHalf)
     bl,blockLabels_ptr = getBlockLabelsFull(blockLabels,img_shape,nblocks,locs.dtype,
                                             device,is_tensor,sub_nframes)
-    bl = rearrange(bl,'l h w t two -> l t two h w')
+    # bl = rearrange(bl,'l h w t two -> l t two h w')
     # pad = (nblocks//2) + (patchsize//2)
-    pad = (patchsize//2)
-    print("bl.shape ",bl.shape)
+    # pad = (patchsize//2)
+    # print("bl.shape ",bl.shape)
     # bl = torchvision.transforms.functional.pad(bl,(pad,)*4)
-    print("bl.shape ",bl.shape)
-    bl = rearrange(bl,'l t two h w -> l h w t two')
-    bl = bl.contiguous()
-    blockLabels_ptr,_ = torch2swig(bl)
+    # print(vals.shape,locs.shape,subAve.shape,burstPad.shape)
+    # print("[subBurst]: bl.shape ",bl.shape,patchsize,nblocks)
+
+    # print("(31,18)")
+    # sb_mid = bl[:,31,18,:,:]
+    # print(sb_mid[:,0].max(),sb_mid[:,0].min())
+    # print("0: ",sb_mid[:,0,0].max(),sb_mid[:,0,0].min())
+    # print("1: ",sb_mid[:,0,1].max(),sb_mid[:,0,1].min())
+
+    # bl = rearrange(bl,'l t two h w -> l h w t two')
+    # print("[subburst] bl.shape ",bl.shape)
+    # bl = bl.contiguous()
+    # blockLabels_ptr,_ = torch2swig(bl)
 
     nsearch = bl.shape[0]
     if mask is None:
@@ -74,13 +92,13 @@ def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, mask, vals, locs,
     assert bl.dim() == 5,"5 dimensional block labels"
 
 
-    print("[subBurst]: burst.shape ",burst.shape)
-    print("[subBurst]: burstPad.shape ",burstPad.shape)
-    print("vals.shape ",vals.shape)
-    print("locs.shape ",locs.shape)
-    print("subAve.shape ",subAve.shape)
-    print("masks.shape ",mask.shape)
-    print("bl.shape ",bl.shape)
+    # print("[subBurst]: burst.shape ",burst.shape)
+    # print("[subBurst]: burstPad.shape ",burstPad.shape)
+    # print("vals.shape ",vals.shape)
+    # print("locs.shape ",locs.shape)
+    # print("subAve.shape ",subAve.shape)
+    # print("masks.shape ",mask.shape)
+    # print("bl.shape ",bl.shape)
 
     # print("bl")
     # print("-"*50)
@@ -119,5 +137,14 @@ def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, mask, vals, locs,
             faiss.bfSubBurstNnf(res, args)
     else:
         faiss.bfSubBurstNnf(res, args)
+
+
+    # print("locs.shape ",locs.shape)
+    # print("(31,18)")
+    # sb_mid = locs[:,31,18,:,:]
+    # print(sb_mid[:,0].max(),sb_mid[:,0].min())
+    # print("0: ",sb_mid[:,0,0].max(),sb_mid[:,0,0].min())
+    # print("1: ",sb_mid[:,0,1].max(),sb_mid[:,0,1].min())
+
 
     return vals, locs

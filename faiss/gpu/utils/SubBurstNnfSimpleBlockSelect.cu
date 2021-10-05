@@ -32,7 +32,7 @@ namespace faiss {
       int row = threadIdx.x + blockDim.x * blockIdx.x;
       int col = threadIdx.y + blockDim.y * blockIdx.y;
       int rowIn = row + patchsize/2;
-      int colIn = row + patchsize/2;
+      int colIn = col + patchsize/2;
       int nframes = inKeys.getSize(3);
       int numOfComps = inKeys.getSize(0);
       bool legal_row = row < inVals.getSize(0);

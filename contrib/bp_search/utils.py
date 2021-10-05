@@ -3,7 +3,7 @@
 import torch
 import numpy as np
 from einops import rearrange,repeat
-from nnf_share import getBlockLabelsRaw,loc_index_names
+from nnf_share import getBlockLabelsRaw,loc_index_names,pix2locs,warp_burst_from_pix,warp_burst_from_locs
 from align.xforms import align_from_pix
 from .th_kmeans import KMeans
 from .meshgrid_per_pixel import meshgrid_per_pixel_launcher
@@ -42,22 +42,10 @@ def compute_search_blocks(sranges,refG):
     # -- numba-fy values --
     for i in range(nimages):
         meshgrid_per_pixel_launcher(sranges[:,i],smesh[:,i],refG)
+        # smesh[:,i] = torch.flip(smesh[:,i],dims=(-1,))
 
     return smesh
     
-def pix2locs(pix):
-    nframes,nimages,h,w,k,two = pix.shape
-    lnames = loc_index_names(1,h,w,k,pix.device)
-    # -- (y,x) -> (x,y) --
-    pix_y = pix[...,0]
-    pix_x = pix[...,1]
-    pix = torch.stack([pix_x,pix_y],dim=-1)
-
-    # -- (x_new,y_new) -> (x_offset,y_offset) --
-    locs = pix - lnames
-    return locs
-
-
 def add_offset_to_search_ranges(locs,search_ranges):
     
     # -- unpack shapes
@@ -72,22 +60,6 @@ def add_offset_to_search_ranges(locs,search_ranges):
 
     return search_ranges_all
 
-def warp_burst(burst,locs,nblocks):
-
-    # -- block ranges per pixel --
-    nframes,nimages,h,w,k,two = locs.shape
-    nparticles = k
-    pix = rearrange(locs,'t i h w p two -> p i (h w) t two')
-
-    # -- create offsets --
-    warps = []
-    for p in range(nparticles):
-        warped = align_from_pix(burst,pix[p],nblocks)
-        warps.append(warped)
-    warps = torch.stack(warps).to(burst.device)
-
-    return warps
-
 def compute_temporal_cluster(wburst,K):
     
     # -- unpack --
@@ -96,7 +68,7 @@ def compute_temporal_cluster(wburst,K):
     # -- compute per-pixel assignments --
     rburst = rearrange(wburst,'p t i f h w -> (p i h w) t f')
     rburst = rburst.contiguous()
-    names,means,counts = KMeans(rburst, K=K, Niter=10, verbose=False)
+    names,means,counts = KMeans(rburst, K=K, Niter=10, verbose=False, randDist=0.)
 
     # -- shape for image sizes --
     shape_args = {'p':nparticles,'i':nimages,'h':h}
@@ -321,8 +293,8 @@ def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
     nimages,h,w,k = sub_vals.shape
     nclusters,nimages,h,w,k,two = sub_locs.shape
 
-    nframes,nimages,h,w = names.shape
-    # names = rearrange(names,'i t h w -> t i h w')
+    nimages,nframes,h,w = names.shape
+    names = rearrange(names,'i t h w -> t i h w')
     # print("locs ",locs.shape)
     # print("sub_locs ",sub_locs.shape)
     # print("names ",names.shape)
@@ -335,37 +307,54 @@ def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
     sub_vals = sub_vals[...,0]
     locs = locs[...,0,:]
     sub_locs = sub_locs[...,0,:].long()
+    new_locs = torch.zeros_like(locs)
     
-
     # -- updating commences! --
-    if overwrite:
+    if overwrite: # todo: remove me.
 
         # -- replace values always --
         vals = sub_vals
+
         locs[...,0] = torch.gather(sub_locs[...,0],0,names,out=locs[...,0])
         locs[...,1] = torch.gather(sub_locs[...,1],0,names,out=locs[...,1])
+        exp_locs_out = locs.clone()[...,None,:] 
 
     else:
 
         # -- replace bools --
-        replace = vals < sub_vals
+        replace = vals > sub_vals
+        # print("replace",replace[:,16,16],replace.shape)
 
         # -- replace when values are smaller --
-        vals = torch.where(replace,vals,sub_vals)
+        vals = torch.where(replace,sub_vals,vals)
+        # print(vals[:,16,16])
 
-        # -- replace all locs into tmp: only update when val says
-        new_locs = locs.clone()
-        new_locs[...,0] = torch.gather(sub_locs[...,0],0,names,out=new_locs[...,0])
-        new_locs[...,1] = torch.gather(sub_locs[...,0],0,names,out=new_locs[...,1])
+
+        # -- expand locs from (ngroups -> nframes) using "names" --
+
+        exp_locs = torch.zeros_like(locs)
+        # print("loc.shape ",locs.shape)
+        # print("names.shape ",names.shape)
+        # print("sub_loc.shape ",sub_locs.shape)
+        # print("exp_locs.shape ",exp_locs.shape)
+        torch.gather(sub_locs[...,0],0,names,out=exp_locs[...,0])
+        torch.gather(sub_locs[...,1],0,names,out=exp_locs[...,1])
+        exp_locs_out = exp_locs.clone()[...,None,:]  # -- expanded locs for warping --
+
+        # -- New_Loc = Cur_Loc + Delta_Loc -- 
+        exp_locs = locs + exp_locs
+        # print("exp_locs ",exp_locs[:,:,16,16])
+
+        # -- replace "locs" where val is smaller --
         for t in range(nframes):
-            locs[t,...,0] = torch.where(replace,locs[t,...,0],new_locs[t,...,0])
-            locs[t,...,1] = torch.where(replace,locs[t,...,1],new_locs[t,...,1])
+            locs[t,...,0] = torch.where(replace,exp_locs[t,...,0],locs[t,...,0])
+            locs[t,...,1] = torch.where(replace,exp_locs[t,...,1],locs[t,...,1])
 
     # -- append back "k" for api --
     vals = rearrange(vals,'i h w -> i h w 1')
     locs = rearrange(locs,'t i h w two -> t i h w 1 two')
 
-    return vals,locs
+    return vals,locs,exp_locs_out
 
         
 def denoise_clustered_burst(wburst,clusters,ave_denoiser):

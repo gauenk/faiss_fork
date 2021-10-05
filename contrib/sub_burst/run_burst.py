@@ -29,9 +29,9 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
     for i in range(nimages):
 
         # -- create padded burst --
-        print("[subBurst.run_burst]: burst[:,i].shape ",burst[:,i].shape)
+        # print("[subBurst.run_burst]: burst[:,i].shape ",burst[:,i].shape)
         burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
-        print("[subBurst.run_burst]: burstPad_i.shape ",burstPad_i.shape)
+        # print("[subBurst.run_burst]: burstPad_i.shape ",burstPad_i.shape)
 
         # -- assign input vals and locs --
         vals_i,locs_i = in_vals,in_locs

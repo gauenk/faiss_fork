@@ -89,9 +89,10 @@ __global__ void nnfl2NormRowMajor(
     IndexType rowStart = RowTileSize*(blockIdx.x);
     IndexType colStart = ColTileSize*(blockIdx.y);
     IndexType blockStart = BlockTileSize*(blockIdx.z);
-    IndexType rowStartPix = rowStart+(nblocks/2);
-    IndexType colStartPix = colStart+(nblocks/2);
     IndexType nbHalf = nblocks/2;
+    IndexType psHalf = patchsize/2;
+    IndexType rowStartPix = rowStart+nbHalf;
+    IndexType colStartPix = colStart+nbHalf;
 
     // determine if our batchsize is too big for the location;
     // the batchsize at compile time might not be a multiple of batchsize at compute time.
@@ -149,8 +150,8 @@ __global__ void nnfl2NormRowMajor(
 		  IndexType fIdx = hDiv % nframes;
 
 		  // ref image indices
-		  IndexType blkRow = rowStart + row;
-		  IndexType blkCol = colStart + col;
+		  IndexType blkRow = rowStart + row + psHalf;
+		  IndexType blkCol = colStart + col + psHalf;
 		  IndexType refBlk = blockStart + blk;
 		  IndexType refRow = rowStart + row + hIdx;
 		  IndexType refCol = colStart + col + wIdx;
@@ -201,8 +202,8 @@ __global__ void nnfl2NormRowMajor(
 		IndexType fIdx = hDiv % nframes;
 
 		// ref image indices
-		IndexType blkRow = rowStart + row;
-		IndexType blkCol = colStart + col;
+		IndexType blkRow = rowStart + row + psHalf;
+		IndexType blkCol = colStart + col + psHalf;
 		IndexType refBlk = blockStart + blk;
 		IndexType refRow = rowStart + row + hIdx;
 		IndexType refCol = colStart + col + wIdx;
@@ -294,8 +295,8 @@ __global__ void nnfl2NormRowMajor(
     		    IndexType fIdx = hDiv % nframes;
     		    
 		    // ref image indices
-		    IndexType blkRow = rowStart + row;
-		    IndexType blkCol = colStart + col;
+		    IndexType blkRow = rowStart + row + psHalf;
+		    IndexType blkCol = colStart + col + psHalf;
 		    IndexType refBlk = blockStart + blk;
 		    IndexType refRow = rowStart + row + hIdx;
 		    IndexType refCol = colStart + col + wIdx;
@@ -392,8 +393,8 @@ __global__ void nnfl2NormRowMajor(
     		  IndexType fIdx = hDiv % nframes;
 
 		  // ref image indices
-		  IndexType blkRow = rowStart + row;
-		  IndexType blkCol = colStart + col;
+		  IndexType blkRow = rowStart + row + psHalf;
+		  IndexType blkCol = colStart + col + psHalf;
 		  IndexType refBlk = blockStart + blk;
 		  IndexType refRow = rowStart + row + hIdx;
 		  IndexType refCol = colStart + col + wIdx;
