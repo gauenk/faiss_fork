@@ -68,8 +68,19 @@ def compute_temporal_cluster(wburst,K):
     # -- compute per-pixel assignments --
     rburst = rearrange(wburst,'p t i f h w -> (p i h w) t f')
     rburst = rburst.contiguous()
-    names,means,counts = KMeans(rburst, K=K, Niter=10, verbose=False, randDist=0.)
+    names,means,counts,dists = KMeans(rburst, K=K, Niter=10, verbose=False, randDist=0.)
 
+    idx = (h//2)*w+w//2
+    print("names.shape ",names.shape)
+    print("dists.shape: ",dists.shape)
+    print("-"*10)
+    print(names[idx])
+    print(dists[idx])
+    print("-"*10)
+    print(names[idx+1])
+    print(dists[idx+1])
+
+    exit()
     # -- shape for image sizes --
     shape_args = {'p':nparticles,'i':nimages,'h':h}
     # print("names",names.shape)
@@ -81,12 +92,16 @@ def compute_temporal_cluster(wburst,K):
     counts = rearrange(counts,'(p i h w) t 1 -> p t i 1 h w',**shape_args)
 
     # -- correct for "identical" matching; a cluster might be empty --
-    weights = counts#/nframes
+    weights = counts/nframes
     # print(counts[...,32,32])
     # print(counts[...,32,32])
     # print("Any empty clusters? ",torch.any(counts == 0).item())
     # print(means[...,:2,32,32])
     # print(wburst[...,:2,32,32])
+    print(counts.shape)
+    print("where are zero.: \n\n",np.where(counts[0,:,0,0].cpu().numpy() == 0))
+    print("num zero: ",np.sum(counts[0,:,0,0].cpu().numpy() == 0))
+    print("num non-zero: ",np.sum(counts[0,:,0,0].cpu().numpy() != 0))
     any_empty_clusters = torch.any(counts == 0).item()
     assert any_empty_clusters == False,"No empty clusters!"
     eq_zero = counts == 0
@@ -339,11 +354,21 @@ def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
         # print("exp_locs.shape ",exp_locs.shape)
         torch.gather(sub_locs[...,0],0,names,out=exp_locs[...,0])
         torch.gather(sub_locs[...,1],0,names,out=exp_locs[...,1])
-        exp_locs_out = exp_locs.clone()[...,None,:]  # -- expanded locs for warping --
 
+        #
+        # -- Update the "Delta Loc" --
+        #
+        
+        elocs = exp_locs.clone()
+        for t in range(nframes):
+            elocs[t,...,0] = torch.where(replace,elocs[t,...,0],0)
+            elocs[t,...,1] = torch.where(replace,elocs[t,...,1],0)
+
+        #
         # -- New_Loc = Cur_Loc + Delta_Loc -- 
+        #
+
         exp_locs = locs + exp_locs
-        # print("exp_locs ",exp_locs[:,:,16,16])
 
         # -- replace "locs" where val is smaller --
         for t in range(nframes):
@@ -353,8 +378,9 @@ def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
     # -- append back "k" for api --
     vals = rearrange(vals,'i h w -> i h w 1')
     locs = rearrange(locs,'t i h w two -> t i h w 1 two')
+    elocs = rearrange(elocs,'t i h w two -> t i h w 1 two')
 
-    return vals,locs,exp_locs_out
+    return vals,locs,elocs
 
         
 def denoise_clustered_burst(wburst,clusters,ave_denoiser):
@@ -367,3 +393,15 @@ def denoise_clustered_burst(wburst,clusters,ave_denoiser):
         denoised.append(c_denoised)
     denoised = torch.stack(denoised,dim=0)
     return denoised
+
+def index_along_ftrs(warped_tiled,ps,c):
+    assert warped_tiled.shape[-3] == ps**2 * c, "ensure eq dims"
+    shape_str = 't i (ps1 ps2 c) h w -> t i ps1 ps2 c h w'
+    psHalf = ps//2
+    warped_tiled = rearrange(warped_tiled,shape_str,ps1=ps,ps2=ps)
+    warped = warped_tiled[:,:,psHalf,psHalf,:,:,:]
+    # ps2 = ps**2
+    # psMid = ps2//2
+    # fIdx = torch.arange(psMid,ps2*c,ps2)
+    # warped = warped_tiled[...,fIdx,:,:]
+    return warped

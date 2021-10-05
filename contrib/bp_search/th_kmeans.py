@@ -58,7 +58,9 @@ def KMeans(x, K=10, Niter=10, verbose=False, randDist=0.):
             )
         )
 
-    return cl, c, Ncl
+    D_ij = ((x.view(B,N,1,D) - c.view(B,1,K,D))**2).sum(-1)
+    # print(dir(D_ij))
+    return cl, c, Ncl, D_ij
 
 
 

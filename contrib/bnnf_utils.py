@@ -73,7 +73,7 @@ def evalAtFlow(burst, flow, patchsize, nblocks,
 
     if return_mode:
 
-        print(vals.shape)
+        # print(vals.shape)
         h = int(np.sqrt(vals.shape[0]))
         vals_cpu = vals[...,0].cpu().numpy()#.ravel()
         vals_cpu = rearrange(vals_cpu,'(h w) 1 -> h w',h=h)
@@ -116,7 +116,7 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
 
         # -- create padded burst --
         burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
-        print("[bnnf_utils, pre]: burstPad_i.shape ",burstPad_i.shape)
+        # print("[bnnf_utils, pre]: burstPad_i.shape ",burstPad_i.shape)
         if tile_burst:
             burstPad_i = tileBurst(burstPad_i,h,w,patchsize,nblocks)
             img_shape = list(img_shape)
@@ -125,7 +125,7 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
         else:
             input_ps = patchsize
 
-        print("[bnnf_utils, post]: burstPad_i.shape ",burstPad_i.shape)
+        # print("[bnnf_utils, post]: burstPad_i.shape ",burstPad_i.shape)
         # -- assign input vals and locs --
         vals_i,locs_i = in_vals,in_locs
         if not(in_vals is None): vals_i = vals_i[i]
@@ -190,9 +190,9 @@ def _runBurstNnf(res, img_shape, burst, ref, vals, locs, patchsize, nblocks, k =
     # -- prepare data --
     c, h, w = img_shape
     nframes = burst.shape[0]
-    print("[bnnf_utils._runBurstNnf, pre]: burst.shape ",burst.shape)
+    # print("[bnnf_utils._runBurstNnf, pre]: burst.shape ",burst.shape)
     burstPad = padBurst(burst,img_shape,patchsize,nblocks)
-    print("[bnnf_utils._runBurstNnf, post]: burstPad.shape ",burstPad.shape)
+    # print("[bnnf_utils._runBurstNnf, post]: burstPad.shape ",burstPad.shape)
     burst_ptr,burst_type = getImage(burstPad)
     is_tensor = torch.is_tensor(burst)
     device = get_optional_device(burst)
@@ -200,7 +200,7 @@ def _runBurstNnf(res, img_shape, burst, ref, vals, locs, patchsize, nblocks, k =
     locs,locs_ptr,locs_type = getLocs(locs,h,w,k,device,is_tensor,nframes)
     bl,blockLabels_ptr = getBlockLabels(blockLabels,nblocks,locs.dtype,
                                        device,is_tensor,nframes)
-    print("[bnnf_utils]: burstPad.shape ",burstPad.shape)
+    # print("[bnnf_utils]: burstPad.shape ",burstPad.shape)
 
     # print("bl")
     # print("-"*50)

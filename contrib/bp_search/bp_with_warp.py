@@ -1,6 +1,22 @@
 """
 Belief Propogation Search
 
+
+The best location can be shuffled
+_away_ from a specific patch becuase
+the warping is conditioned on the current state.
+
+Said another way...
+
+For a specific state S, the 
+resulting warped image, I | S,
+can move the best neighboring patch
+_further away_ and it is unclear
+if there is a way for the best
+patch to "come back" into reach for
+a specific patch.
+
+
 """
 
 import torch
@@ -25,6 +41,32 @@ from .merge_search_ranges_numba import merge_search_ranges
 center_crop = torchvision.transforms.functional.center_crop
 resize = torchvision.transforms.functional.resize
 th_pad = torchvision.transforms.functional.pad
+
+
+def compute_temporal_cluster(wburst,K):
+    
+    # -- unpack --
+    nparticles,nframes,nimages,nftrs,h,w = wburst.shape
+
+    # -- compute per-pixel assignments --
+    rburst = rearrange(wburst,'p t i f h w -> (p i h w) t f')
+    rburst = rburst.contiguous()
+    names,means,counts,dists = KMeans(rburst, K=K, Niter=10, verbose=False, randDist=0.)
+
+    # -- shape for image sizes --
+    shape_args = {'p':nparticles,'i':nimages,'h':h}
+    names = rearrange(names,'(p i h w) t -> p t i h w',**shape_args)
+    means = rearrange(means,'(p i h w) t f -> p t i f h w',**shape_args)
+    counts = rearrange(counts,'(p i h w) t 1 -> p t i 1 h w',**shape_args)
+
+    # -- correct for "identical" matching; a cluster might be empty --
+    weights = counts/nframes
+    any_empty_clusters = torch.any(counts == 0).item()
+    assert any_empty_clusters == False,"No empty clusters!"
+    eq_zero = counts == 0
+    mask = torch.where(eq_zero,1,0).type(torch.bool)
+    
+    return names,means,weights,mask
 
 
 def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
@@ -131,7 +173,7 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
         # -- 1.) cluster each pixel across time --
         K = clK[i]
         names,means,weights,mask = compute_temporal_cluster(warped_noisy,K)
-        wmeans = means * weights
+        wmeans = means * weights/nframes
         wmeans = wmeans[0] # nparticles == 1
         wmeans = wmeans.contiguous()
         cc_names = center_crop(names,ishape)
@@ -174,18 +216,8 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
         nframes,nimages,hP,wP,k,two = pad_locs.shape
         psize = edict({'h':hP,'w':wP})
         p_exp_locs = padLocs(exp_locs,nbHalf,'extend')
-        warped_noisy_old = warped_noisy[0]
         warped_noisy = warp_burst_from_locs(warped_noisy[0],p_exp_locs,nblocks,psize)
-        warped_clean_old = warped_clean[0]
         warped_clean = warp_burst_from_locs(warped_clean[0],p_exp_locs,nblocks,psize)
-        delta = torch.sum(torch.abs(warped_clean_old - warped_clean[0])).item()
-        print("Clean Delta[%d]: %2.3e" % (i,delta))
-        delta = torch.sum(torch.abs(warped_noisy_old - warped_noisy[0])).item()
-        print("Noisy Delta[%d]: %2.3e" % (i,delta))
-        delta = torch.sum(torch.abs(warped_clean_old[[nframes//2]] \
-                                    - warped_clean[0])).item()
-        print("Mid Clean Delta[%d]: %2.3e" % (i,delta))
-
 
     warped_noisy = center_crop(warped_noisy[0],ishape)
     warped_clean = center_crop(warped_clean[0],ishape)
