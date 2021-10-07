@@ -8,6 +8,11 @@ from align.xforms import align_from_pix
 from .th_kmeans import KMeans
 from .meshgrid_per_pixel import meshgrid_per_pixel_launcher
 
+def batched_bincount(x, dim, max_value):
+    target = torch.zeros(x.shape[0], max_value, dtype=x.dtype, device=x.device)
+    values = torch.ones_like(x)
+    target.scatter_add_(dim, x, values)
+    return target
 
 def batched_index_select(input, dim, index):
 	views = [input.shape[0]] + \
@@ -23,12 +28,13 @@ def batched_scatter_index(x, val, nftrs):
     target.scatter_add_(2, x, val)
     return target
 
-def create_search_ranges(nblocks,h,w,nframes):
+def create_search_ranges(nblocks,h,w,nframes,ref=None):
 
     # -- search range per pixel --
+    if ref is None: ref = nframes//2
     search_ranges = getBlockLabelsRaw(nblocks) 
     search_ranges = repeat(search_ranges,'l two -> l h w t two',h=h,w=w,t=nframes)
-    search_ranges[...,nframes//2,:] = 0
+    search_ranges[...,ref,:] = 0
     return search_ranges
 
 def compute_search_blocks(sranges,refG):
@@ -60,6 +66,120 @@ def add_offset_to_search_ranges(locs,search_ranges):
 
     return search_ranges_all
 
+def temporal_inliers_outliers(burst,wburst,vals,std,numSearch=3):
+
+    # -- shapes --
+    device = burst.device
+    nframes,nimages,nftrs,h,w = wburst.shape
+    ref = nframes//2
+    minNumOutliers = numSearch
+    maxNumNeigh = nframes - minNumOutliers
+    # maxNumNeigh = 3
+    # maxNumNeigh = 12
+
+    # -- compute threshold --
+    # thresh = std * (nframes - 1) / nframes**2
+    # thresh = 0.108#std * (nframes - 1) / nframes**2
+    # thresh = std*255.*.105+.5
+    thresh = 1000.#0.30 #+ 1.
+    # print("thresh: ",thresh)#,std,std*255.,std*255.*.105,nftrs)
+
+    # -- compute per-pixel assignments --
+    burst_rs = rearrange(burst,'t i f h w -> t i h w f')
+    wburst_rs = rearrange(wburst,'t i f h w -> t i h w f')
+    wburst_fmt = rearrange(wburst,'t i f h w -> (i h w) t f')
+
+    # -- compute pair-wise distances --
+    B,T,F = wburst_fmt.shape
+    D = torch.cdist(wburst_fmt,wburst_fmt)[:,ref]
+
+    # -- reshape back to image --
+    D = rearrange(D,'(i h w) t -> t i h w',i=nimages,h=h,w=w)
+    # print(D[:,0,16+1,16+1])
+    jitter = torch.rand(D.shape).to(device)/2.
+
+
+    # # -- filter by threshold -- 
+    # D = torch.where(D < thresh, D.double(), torch.finfo(D.dtype).max)
+
+    # -- sorted Distances and Neighbors --
+    order = torch.argsort(D,dim=0)
+    bestOrder = order[:maxNumNeigh]
+    bestD = torch.gather(D,0,bestOrder)
+
+    #
+    # -- mark outlier images -- 
+    #
+
+    # -- mark each frame (h,w) if an inlier --
+    counts = torch.zeros_like(order)
+    ones = torch.ones_like(order)
+    counts.scatter_(0,bestOrder,ones) # if "bestOrder" picked you, label with a "1"
+    counts = torch.where(D < thresh,counts,0) # remove if the dist is too big.
+    
+    # -- compute percent of inliers pixels per frame -- 
+    perc_pix_inliers = torch.mean(counts.type(torch.float),dim=(2,3))
+    # jitter = torch.rand(perc_pix_inliers.shape).to(device)/100.
+    # jitter = torch.zeros_like(jitter)
+    # perc_pix_inliers += jitter # -- we don't want matches --
+
+    # -- mark frames as outliers -- 
+    percThresh = torch.sort(perc_pix_inliers,
+                            dim=0,descending=True).values[maxNumNeigh].item()
+    percThresh = max(percThresh,0.90)
+    outliers = torch.where(perc_pix_inliers < percThresh)[0]
+    # print(percThresh,outliers)
+    assert len(outliers) >= minNumOutliers,"Min num of outliers met."
+    
+    #
+    # -- choose outliers for search --
+    # 
+
+    noutliers = len(outliers)
+    search_names_indices = torch.randperm(noutliers)[:numSearch]
+    search_names = outliers[search_names_indices]
+    search_frames = burst_rs[search_names]
+
+    #
+    # -- compute average over inliers pixels _without_ outliers --
+    # 
+
+    # -- remove chosen outliers --
+    for outlier_fname in search_names:
+        bestOrder = torch.where(bestOrder == outlier_fname,ref,bestOrder)
+
+    # -- compute num uniques per pixel --
+    bestOrder_rs = rearrange(bestOrder,'t i h w -> (i h w) t').contiguous()
+    fcounts = batched_bincount(bestOrder_rs,1,nframes)
+    fcounts = rearrange(fcounts,'(i h w) t -> t i h w',h=h,w=w)
+    inlier_mask = torch.where(fcounts >= 1,1,0)
+    nuniques = torch.sum(inlier_mask,dim=0)
+    assert torch.any(nuniques > maxNumNeigh) == False, "Limit max search."
+
+    # -- gather inlier frames --
+    sub_fcounts = torch.zeros_like(bestOrder).type(fcounts.dtype)
+    torch.gather(fcounts,0,bestOrder,out=sub_fcounts)
+    bestOrder = bestOrder[...,None].expand(-1,-1,-1,-1,F)
+    inliers = torch.zeros_like(bestOrder).type(wburst_rs.dtype)
+    torch.gather(wburst_rs,0,bestOrder,out=inliers)
+    
+    # -- reweight by individual frame contrib --
+    fcounts_exp = repeat(sub_fcounts,'t i h w -> t i h w f',f=F)
+    nuniques_exp = repeat(nuniques,'i h w -> i h w f',f=F)
+    winliers = inliers / fcounts_exp # re-scale over-represented samples
+    inlier_ave = torch.sum(winliers,dim=0) / nuniques_exp # correct divisor for ave
+
+    #
+    # -- reformat & stack images --
+    #
+
+    inlier_ave = rearrange(inlier_ave,'i h w f -> 1 i f h w')
+    search_frames = rearrange(search_frames,'t i h w f -> t i f h w')
+    search_frames = torch.cat([inlier_ave,search_frames],dim=0)
+    nuniques = nuniques + search_frames.shape[0] - 1
+
+    return search_frames,search_names,nuniques
+
 def compute_temporal_cluster(wburst,K):
     
     # -- unpack --
@@ -70,38 +190,14 @@ def compute_temporal_cluster(wburst,K):
     rburst = rburst.contiguous()
     names,means,counts,dists = KMeans(rburst, K=K, Niter=10, verbose=False, randDist=0.)
 
-    idx = (h//2)*w+w//2
-    print("names.shape ",names.shape)
-    print("dists.shape: ",dists.shape)
-    print("-"*10)
-    print(names[idx])
-    print(dists[idx])
-    print("-"*10)
-    print(names[idx+1])
-    print(dists[idx+1])
-
-    exit()
     # -- shape for image sizes --
     shape_args = {'p':nparticles,'i':nimages,'h':h}
-    # print("names",names.shape)
-    # print("means",means.shape)
-    # print("counts",counts.shape)
-    # batched_scatter_index(names, rburst, nftrs)
     names = rearrange(names,'(p i h w) t -> p t i h w',**shape_args)
     means = rearrange(means,'(p i h w) t f -> p t i f h w',**shape_args)
     counts = rearrange(counts,'(p i h w) t 1 -> p t i 1 h w',**shape_args)
 
     # -- correct for "identical" matching; a cluster might be empty --
     weights = counts/nframes
-    # print(counts[...,32,32])
-    # print(counts[...,32,32])
-    # print("Any empty clusters? ",torch.any(counts == 0).item())
-    # print(means[...,:2,32,32])
-    # print(wburst[...,:2,32,32])
-    print(counts.shape)
-    print("where are zero.: \n\n",np.where(counts[0,:,0,0].cpu().numpy() == 0))
-    print("num zero: ",np.sum(counts[0,:,0,0].cpu().numpy() == 0))
-    print("num non-zero: ",np.sum(counts[0,:,0,0].cpu().numpy() != 0))
     any_empty_clusters = torch.any(counts == 0).item()
     assert any_empty_clusters == False,"No empty clusters!"
     eq_zero = counts == 0
@@ -383,6 +479,47 @@ def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
     return vals,locs,elocs
 
         
+def update_state_outliers(vals,locs,sub_vals,sub_locs,names,overwrite):
+
+    # -- unpack all shapes --
+    nimages,h,w,k = vals.shape
+    nframes,nimages,h,w,k,two = locs.shape
+
+    nimages,h,w,k = sub_vals.shape
+    nsearch,nimages,h,w,k,two = sub_locs.shape
+
+    nsearch = names.shape
+    
+    # -- index at top k == 1 --
+    vals = vals[...,0]
+    sub_vals = sub_vals[...,0]
+    locs = locs[...,0,:]
+    sub_locs = sub_locs[...,0,:].long()
+    new_locs = torch.zeros_like(locs)
+
+    # -- replace bools --
+    # ratio = vals / sub_vals
+    # coin = torch.rand(vals.shape).to(vals.device)
+    # replace = coin < ratio
+    replace = vals > sub_vals
+    vals = torch.where(replace,sub_vals,vals)
+
+    # -- replace with new values where necessary --
+    prev_locs = locs.clone()
+    for search_index_m1,search_name in enumerate(names):
+        search_index = search_index_m1 + 1
+        sn,si = search_name,search_index
+        locs[sn,...,0] = torch.where(replace,sub_locs[si,...,0],locs[sn,...,0])
+        locs[sn,...,1] = torch.where(replace,sub_locs[si,...,1],locs[sn,...,1])
+    delta = torch.sum(torch.abs(prev_locs - locs)).item()
+
+    # -- append back "k" for api --
+    vals = rearrange(vals,'i h w -> i h w 1')
+    locs = rearrange(locs,'t i h w two -> t i h w 1 two')
+
+    return vals,locs
+
+
 def denoise_clustered_burst(wburst,clusters,ave_denoiser):
     denoised = []
     for c in range(clusters):

@@ -11,8 +11,23 @@ import sys
 sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib")
 from align.xforms import align_from_pix,align_from_flow
 
+# -- torchvision fxn --
+center_crop = torchvision.transforms.functional.center_crop
+
 
 # -- helpers --
+
+def mode_vals(vals,interior_frame_size):
+    vals = center_crop(vals[0,:,:,0],interior_frame_size)
+    return mode_ndarray(vals.cpu().numpy().ravel())
+
+def mode_ndarray(ndarray):
+    nbins = 400
+    step = (ndarray.max() - ndarray.min())/nbins
+    bins = np.arange(ndarray.min(),ndarray.max()+2,step)
+    hist,_ = np.histogram(ndarray,bins)
+    mode = bins[hist.argmax()]
+    return mode
 
 def warp_burst_from_pix(burst,pix,nblocks):
 
@@ -30,7 +45,7 @@ def warp_burst_from_pix(burst,pix,nblocks):
 
     return warps
 
-def warp_burst_from_locs(burst,locs,patchsize,isize):
+def warp_burst_from_locs(burst,locs,nblocks,isize):
 
     # -- block ranges per pixel --
     nframes,nimages,h,w,k,two = locs.shape
@@ -43,9 +58,11 @@ def warp_burst_from_locs(burst,locs,patchsize,isize):
     # -- create offsets --
     warps = []
     for p in range(nparticles):
-        warped = align_from_flow(burst,flows[p],patchsize,isize=isize)
+        warped = align_from_flow(burst,flows[p],1,isize=isize)
         warps.append(warped)
+
     warps = torch.stack(warps).to(burst.device)
+
 
     return warps
 
@@ -69,6 +86,13 @@ def locs2flow(locs):
     flows_x = locs[...,1]
     flows = torch.stack([flows_x,flows_y],dim=-1)
     return flows
+
+def flow2locs(flow):
+    # flow = rearrange(flow,'t i h w p two -> p i (h w) t two')
+    locs_y = flow[...,0]
+    locs_x = -flow[...,1]
+    locs = torch.stack([locs_x,locs_y],dim=-1)
+    return locs
 
 def pix2locs(pix):
     nframes,nimages,h,w,k,two = pix.shape

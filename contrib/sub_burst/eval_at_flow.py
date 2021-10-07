@@ -13,27 +13,37 @@ def evalAtFlow(burst, flow, patchsize, nblocks, return_mode=False):
     vals,locs = [],[]
     valMean = 0. # defined to be zero for this fxn!
     pad = patchsize//2 + nblocks
-    nimages,nsamples,nframes,two = flow.shape
+    nimages_f,h_f,w_f,nframes_f,two = flow.shape
     nframes,nimages,c,h,w = burst.shape
+    assert nimages_f == nimages
+    assert h_f == h
+    assert w_f == w
+    assert nframes_f == nframes
+    print("DONT USE ME!")
+    exit()
+    
     for i in range(nimages):
 
         # -- create block labels --
-        blockLabels = rearrange(flow[i],'s t two -> t s two')
-        blockLabels_Y = blockLabels[...,0]
-        blockLabels_X = blockLabels[...,1]
-        blockLabels = torch.stack([-blockLabels_X,blockLabels_Y],dim=-1)
+        # blockLabels = rearrange(flow[i],'s t two -> t s two')
+        # blockLabels_Y = blockLabels[...,0]
+        # blockLabels_X = blockLabels[...,1]
+        # blockLabels = torch.stack([-blockLabels_X,blockLabels_Y],dim=-1)
+        locs = flow2locs(flow)
+        # print("evalAtFlow: ",blockLabels)
+
 
         # -- get unique -- 
-        blockLabels = rearrange(blockLabels,'t p two -> p (t two)')
-        blockLabels = torch.unique(blockLabels,dim=0,sorted=False)
-        blockLabels = rearrange(blockLabels,'l (t two) -> t l two',t=nframes)
-        nlabels = blockLabels.shape[1]
+        # blockLabels = rearrange(blockLabels,'t p two -> p (t two)')
+        # blockLabels = torch.unique(blockLabels,dim=0,sorted=False)
+        # blockLabels = rearrange(blockLabels,'l (t two) -> t l two',t=nframes)
+        # nlabels = blockLabels.shape[1]
 
         # -- evaluate at block labels --
         vals_i,locs_i = runBurstNnf(burst, patchsize,
                                     nblocks, k = nlabels,
                                     valMean = valMean,
-                                    blockLabels=blockLabels,
+                                    blockLabels=locs,
                                     fmt=False)
 
         # -- get shape to remove boarder --

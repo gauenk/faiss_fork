@@ -42,33 +42,6 @@ center_crop = torchvision.transforms.functional.center_crop
 resize = torchvision.transforms.functional.resize
 th_pad = torchvision.transforms.functional.pad
 
-
-def compute_temporal_cluster(wburst,K):
-    
-    # -- unpack --
-    nparticles,nframes,nimages,nftrs,h,w = wburst.shape
-
-    # -- compute per-pixel assignments --
-    rburst = rearrange(wburst,'p t i f h w -> (p i h w) t f')
-    rburst = rburst.contiguous()
-    names,means,counts,dists = KMeans(rburst, K=K, Niter=10, verbose=False, randDist=0.)
-
-    # -- shape for image sizes --
-    shape_args = {'p':nparticles,'i':nimages,'h':h}
-    names = rearrange(names,'(p i h w) t -> p t i h w',**shape_args)
-    means = rearrange(means,'(p i h w) t f -> p t i f h w',**shape_args)
-    counts = rearrange(counts,'(p i h w) t 1 -> p t i 1 h w',**shape_args)
-
-    # -- correct for "identical" matching; a cluster might be empty --
-    weights = counts/nframes
-    any_empty_clusters = torch.any(counts == 0).item()
-    assert any_empty_clusters == False,"No empty clusters!"
-    eq_zero = counts == 0
-    mask = torch.where(eq_zero,1,0).type(torch.bool)
-    
-    return names,means,weights,mask
-
-
 def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
                 nparticles = 1, niters = 20,
                 valMean = 0.,

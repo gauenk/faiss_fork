@@ -11,15 +11,20 @@ from nnf_share import *
 # import nnf_utils
 
 def evalAtFlow(burst, flow, patchsize, nblocks,
-               return_mode=False, tile_burst=False):
+               return_mode=False, tile_burst=False,
+               img_shape=None):
     """
     Evaluate the code at the provided flow value.
 
     """
+
     vals,locs = [],[]
     valMean = 0. # defined to be zero for this fxn!
     pad = patchsize//2 + nblocks//2
     nimages,nsamples,nframes,two = flow.shape
+    if nsamples > 1:
+        print("WARNING! Only works for a one flow used at EACH pixel location.")
+        flow = flow[:,[0]]
     nframes,nimages,c,h,w = burst.shape
     for i in range(nimages):
 
@@ -40,38 +45,39 @@ def evalAtFlow(burst, flow, patchsize, nblocks,
                                     nblocks, k = nlabels,
                                     valMean = valMean,
                                     blockLabels=blockLabels,
-                                    fmt=False,tile_burst=tile_burst)
+                                    fmt=False,tile_burst=tile_burst,
+                                    img_shape=img_shape)
 
         # -- get shape to remove boarder --
         one,vH,vW,vK = vals_i.shape
         # ccH = slice(pad,h-pad)
         # ccW = slice(pad,w-pad)
         # print(h//2,h//2+1)
-        ccH = slice(1,2)
-        ccW = slice(1,2)
-        ccH = slice(0,1000)
-        ccW = slice(0,1000)
-
+        # ccH = slice(1,2)
+        # ccW = slice(1,2)
+        # ccH = slice(0,1000)
+        # ccW = slice(0,1000)
 
         # ccH = slice(h-1,h)
         # ccW = slice(w-1,w)
 
         # -- remove boarder --
-        vals_i = vals_i[:,ccH,ccW,:]
-        locs_i = locs_i[:,:,ccH,ccW,:,:]
-        vals_i = rearrange(vals_i,'i h w k -> i (h w) k').cpu()
-        locs_i = rearrange(locs_i,'i t h w k two -> k i (h w) t two').cpu().long()
+        # vals_i = vals_i[:,ccH,ccW,:]
+        # locs_i = locs_i[:,:,ccH,ccW,:,:]
+        if return_mode:
+            vals_i = rearrange(vals_i,'i h w k -> i (h w) k').cpu()
+            locs_i = rearrange(locs_i,'i t h w k two -> i k (h w) t two').cpu().long()
 
         # -- reshape & append --
         vals.append(vals_i[0])
-        locs.append(locs_i[:,0])
+        locs.append(locs_i[0])
 
     # -- prepare output --
-    vals = torch.stack(vals,dim=-1)
-    locs = torch.stack(locs,dim=0)
-    
 
     if return_mode:
+
+        vals = torch.stack(vals,dim=-1)
+        locs = torch.stack(locs,dim=0)
 
         # print(vals.shape)
         h = int(np.sqrt(vals.shape[0]))
@@ -90,6 +96,10 @@ def evalAtFlow(burst, flow, patchsize, nblocks,
         return mode
 
     else:
+
+        vals = torch.stack(vals,dim=0)
+        locs = torch.stack(locs,dim=0)
+
         return vals,locs
 
 def runBurstNnf(burst, patchsize, nblocks, k = 1,
@@ -201,6 +211,7 @@ def _runBurstNnf(res, img_shape, burst, ref, vals, locs, patchsize, nblocks, k =
     bl,blockLabels_ptr = getBlockLabels(blockLabels,nblocks,locs.dtype,
                                        device,is_tensor,nframes)
     # print("[bnnf_utils]: burstPad.shape ",burstPad.shape)
+    # print("[bnnf_utils]: bl.shape ",bl.shape)
 
     # print("bl")
     # print("-"*50)

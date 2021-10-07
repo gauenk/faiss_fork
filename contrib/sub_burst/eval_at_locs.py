@@ -22,17 +22,18 @@ def evalAtLocs(burst, locs, patchsize, nblocks,
         c,h,w = burst.shape[-3:]
 
     # -- pad locs --
+    print("-"*30)
+    print(locs[:,0,h//2,w//2,0,:])
+    print("-"*30)
     hL,wL,_,_ = locs.shape[-4:]
     psHalf = patchsize//2
-    print(h,w,hL,wL)
     if False and ((h+psHalf != hL) or (w+psHalf != wL)):
-        pad_locs = padLocs(locs,psHalf)
+        pad_locs = padLocs(locs,psHalf,'extend')
     else:
         pad_locs = locs
 
     # -- evaluate at block labels --
     pad_locs = rearrange(pad_locs,'t i h w s two -> s i h w t two')
-    print("pad_locs.shape ",pad_locs.shape)
     out_vals,out_locs = runBurstNnf(burst, patchsize,
                                     nblocks, k = nsamples,
                                     valMean = valMean,
