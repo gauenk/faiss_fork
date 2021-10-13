@@ -42,13 +42,46 @@ def compute_search_blocks(sranges,refG):
     # -- init shapes and smesh -- 
     # print(sranges.shape)
     nsearch_per_group,nimages,h,w,ngroups,two = sranges.shape
+    print("ngroups: ",ngroups)
     nsearch = nsearch_per_group**(ngroups-1) # since ref only has 1 elem
-    smesh = torch.zeros(nsearch,nimages,h,w,ngroups,two).to(sranges.device)
+    smesh = torch.zeros(nsearch,nimages,h,w,ngroups,two).type(torch.int)
+    smesh = smesh.to(sranges.device)
+
+    # -- [for testing] version 2 --
+    # ranges0 = sranges[:,0,0,0,-1,0].cpu().numpy()
+    # ranges1 = sranges[:,0,0,0,-1,1].cpu().numpy()
+    # ranges0 = repeat(ranges0,'s -> s g',g=ngroups)
+    # ranges1 = repeat(ranges1,'s -> s g',g=ngroups)
+    # # ranges0[refG] = [0]
+    # # ranges1[refG] = [0]
+    # print("ranges0.shape: ",ranges0.shape)
+
+    # ranges0 = [ ranges0[:,s] for s in range(ngroups)]
+    # ranges1 = [ ranges1[:,s] for s in range(ngroups)]
+    # print(ranges0[0])
+    # print("-"*30)
+    # ranges0[refG] = np.array([0])
+    # ranges1[refG] = np.array([0])
+    # print(len(ranges0))
+    # for s in range(ngroups): print(s,len(ranges0[s]))
+
+    # smesh0 = np.meshgrid(*ranges0)
+    # smesh0 = np.stack([g.ravel() for g in smesh0])
+    # smesh1 = np.meshgrid(*ranges1)
+    # smesh1 = np.stack([g.ravel() for g in smesh1])
+
+    # print("smesh0.shape: ",smesh0.shape)
+    # smesh = np.stack([smesh0,smesh1],axis=-1)
+    # print("smesh.shape: ",smesh.shape)
+    # smesh = repeat(smesh,'g l two -> l i h w g two',i=nimages,h=h,w=w)
+    # print("smesh.shape: ",smesh.shape)
+    # smesh = torch.IntTensor(smesh).to(sranges.device)
+    # print("nsearch: ",nsearch)
 
     # -- numba-fy values --
     for i in range(nimages):
         meshgrid_per_pixel_launcher(sranges[:,i],smesh[:,i],refG)
-        # smesh[:,i] = torch.flip(smesh[:,i],dims=(-1,))
+        smesh[:,i] = torch.flip(smesh[:,i],dims=(-1,))
 
     return smesh
     
@@ -81,7 +114,7 @@ def temporal_inliers_outliers(burst,wburst,vals,std,numSearch=3):
     # thresh = std * (nframes - 1) / nframes**2
     # thresh = 0.108#std * (nframes - 1) / nframes**2
     # thresh = std*255.*.105+.5
-    thresh = 1000.#0.30 #+ 1.
+    thresh = 100.#0.75 #+ 1.
     # print("thresh: ",thresh)#,std,std*255.,std*255.*.105,nftrs)
 
     # -- compute per-pixel assignments --
@@ -179,6 +212,103 @@ def temporal_inliers_outliers(burst,wburst,vals,std,numSearch=3):
     nuniques = nuniques + search_frames.shape[0] - 1
 
     return search_frames,search_names,nuniques
+
+def flow_to_groups(flow):
+    # i t h w two
+
+    # -- reshape for readability --
+    nimages,nframes,H,W,two = flow.shape
+    flow = rearrange(flow,'i t h w two -> (i h w) t two')
+    B,T,two = flow.shape
+
+    # # -- group flows --
+    # groups = torch.zeros(nimages,H,W,ngroups).astype(torch.bool)
+
+    # -- get pairwise bools --
+    eq_flow = torch.zeros(nframes,nframes,B).type(torch.bool)
+    for t0 in range(nframes):
+        for t1 in range(nframes):
+            eq_flow[t0,t1] = torch.all(flow[:,t0] == flow[:,t1],dim=-1)
+
+    
+    # -- from bool matrix of frames to pairwise frames --
+    groups = torch.zeros(B,nframes).type(torch.long)
+    for t0 in range(nframes):    
+        _,indices = torch.max(eq_flow[t0],dim=0)
+        groups[:,t0] = indices
+
+    # -- from flow_index to a group ID --
+    ngroups = 0
+    for t0 in range(nframes):
+        match = groups == t0
+        if torch.any(match):
+            groups[torch.where(match)] = ngroups
+            ngroups += 1
+
+    # -- reshape to output --
+    groups = rearrange(groups,'(i h w) t -> t i h w',h=H,w=W)
+    return groups,ngroups
+
+def cluster_frames_by_groups(wburst,groups,ngroups):
+    # print("wburst.shape: ",wburst.shape)
+    # print("groups.shape: ",groups.shape)
+    nframes,nimages,F,H,W = wburst.shape
+    groups = repeat(groups,'t i h w -> t i f h w',f=F)
+
+    # print("[post] groups.shape: ",groups.shape)
+    ones = torch.ones_like(wburst)
+    counts = torch.zeros_like(wburst)
+    counts = counts.scatter_add(0,groups,ones)
+    gburst = torch.zeros_like(wburst)
+    gburst = gburst.scatter_add(0,groups,wburst)/counts
+    gburst = gburst[:ngroups]
+    del groups
+    return gburst
+
+def compute_mode(std,patchsize,groups):
+    # counts is _per frame_ and is the same at _each pixel_
+
+    # -- get counts --
+    nframes,nimages,H,W = groups.shape
+    device = groups.device
+    # counts = groups[:,:,20,20]
+
+    groups = groups[:,:,20,20]
+    ones = torch.ones_like(groups)
+    counts = torch.zeros_like(groups)
+    ngroups = groups.max().item()+1
+    counts = counts.scatter_add(0,groups,ones)
+    counts = counts[:ngroups]
+    assert counts.shape[0] == ngroups,"Counts is simple for now."
+
+    # -- create modes per frame --
+    index = torch.arange(ngroups)
+    modes = torch.zeros(ngroups)
+    var = std**2
+    p = patchsize 
+    for t in range(ngroups):
+        not_t = torch.cat([index[slice(None,t)],index[slice(t+1,None)]],dim=0)
+        Gk = counts[t]
+        harm_sum = torch.sum(1/counts[not_t])/ngroups**2
+        frame_term = ((ngroups-1) / ngroups)**2 * counts[t]
+        c2 = var * (frame_term + harm_sum) # coeff of gamma
+        mode =  (1 - 2/p) * c2 * p
+        modes[t] = mode
+    return modes
+
+def grouped_flow(flow,groups):
+    print("flow.shape: ",flow.shape)
+    print("groups.shape: ",groups.shape)
+    nimages,nframes,H,W,two = flow.shape
+    groups = rearrange(groups,'t i h w -> i t h w')
+    ngroups = groups.max().item()+1
+    nimages,nframes,H,W = groups.shape
+    groups = groups[0,:,20,20]
+    gflow = torch.zeros_like(flow)[:,:ngroups]
+    for g in range(ngroups):
+        t = torch.min(torch.where(groups == g)[0]).item()
+        gflow[:,g,:,:,:] = flow[:,t,:,:,:]
+    return gflow
 
 def compute_temporal_cluster(wburst,K):
     
@@ -394,50 +524,72 @@ def slice_state_testing(locs,names,sranges,nblocks):
     #     locs[t,...,1] = torch.where(replace,locs[t,...,1],new_locs[t,...,1])
 
     
+def update_state_locs(curr,prop,names):
+    """
+    current locs: (nframes,..)
+    prop locs: (ngroups,..)
+    names: (nframes,...) with indicates for [ngroups]
+    """
 
-def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
+    # -- expand [prop] locs to [curr] locs --
+    expanded = torch.zeros_like(curr)
+    K = curr.shape[-2]
+    for k in range(K):
+        print("prop.shape: ",prop.shape)
+        print("names.shape: ",names.shape)
+        print("curr.shape: ",curr.shape)
+        print("expanded.shape: ",expanded.shape)
+        torch.gather(prop[...,k,0],0,names,out=expanded[...,k,0])
+        torch.gather(prop[...,k,1],0,names,out=expanded[...,k,1])
+
+    # -- add to previous state --
+    expanded = curr + expanded
+
+    return expanded
+    
+def update_state(vals,locs,prop_vals,prop_locs,names,overwrite):
 
     # -- unpack all shapes --
     nimages,h,w,k = vals.shape
     nframes,nimages,h,w,k,two = locs.shape
 
-    nimages,h,w,k = sub_vals.shape
-    nclusters,nimages,h,w,k,two = sub_locs.shape
+    nimages,h,w,k = prop_vals.shape
+    nclusters,nimages,h,w,k,two = prop_locs.shape
 
     nimages,nframes,h,w = names.shape
     names = rearrange(names,'i t h w -> t i h w')
     # print("locs ",locs.shape)
-    # print("sub_locs ",sub_locs.shape)
+    # print("prop_locs ",prop_locs.shape)
     # print("names ",names.shape)
     # print("vals.shape",vals.shape)
-    # print("sub_vals.shape",sub_vals.shape)
+    # print("prop_vals.shape",prop_vals.shape)
     
 
     # -- index at top 1 --
     vals = vals[...,0]
-    sub_vals = sub_vals[...,0]
+    prop_vals = prop_vals[...,0]
     locs = locs[...,0,:]
-    sub_locs = sub_locs[...,0,:].long()
+    prop_locs = prop_locs[...,0,:].long()
     new_locs = torch.zeros_like(locs)
     
     # -- updating commences! --
     if overwrite: # todo: remove me.
 
         # -- replace values always --
-        vals = sub_vals
+        vals = prop_vals
 
-        locs[...,0] = torch.gather(sub_locs[...,0],0,names,out=locs[...,0])
-        locs[...,1] = torch.gather(sub_locs[...,1],0,names,out=locs[...,1])
+        locs[...,0] = torch.gather(prop_locs[...,0],0,names,out=locs[...,0])
+        locs[...,1] = torch.gather(prop_locs[...,1],0,names,out=locs[...,1])
         exp_locs_out = locs.clone()[...,None,:] 
 
     else:
 
         # -- replace bools --
-        replace = vals > sub_vals
+        replace = vals > prop_vals
         # print("replace",replace[:,16,16],replace.shape)
 
         # -- replace when values are smaller --
-        vals = torch.where(replace,sub_vals,vals)
+        vals = torch.where(replace,prop_vals,vals)
         # print(vals[:,16,16])
 
 
@@ -446,10 +598,10 @@ def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
         exp_locs = torch.zeros_like(locs)
         # print("loc.shape ",locs.shape)
         # print("names.shape ",names.shape)
-        # print("sub_loc.shape ",sub_locs.shape)
+        # print("prop_loc.shape ",prop_locs.shape)
         # print("exp_locs.shape ",exp_locs.shape)
-        torch.gather(sub_locs[...,0],0,names,out=exp_locs[...,0])
-        torch.gather(sub_locs[...,1],0,names,out=exp_locs[...,1])
+        torch.gather(prop_locs[...,0],0,names,out=exp_locs[...,0])
+        torch.gather(prop_locs[...,1],0,names,out=exp_locs[...,1])
 
         #
         # -- Update the "Delta Loc" --
@@ -464,7 +616,7 @@ def update_state(vals,locs,sub_vals,sub_locs,names,overwrite):
         # -- New_Loc = Cur_Loc + Delta_Loc -- 
         #
 
-        exp_locs = locs + exp_locs
+        # exp_locs = locs + exp_locs
 
         # -- replace "locs" where val is smaller --
         for t in range(nframes):

@@ -28,7 +28,7 @@ th_pad = torchvision.transforms.functional.pad
 
 
 def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
-                     nparticles = 1, niters = 50,
+                     nparticles = 1, niters = 100,
                      valMean = 0., std = None,
                      l2_nblocks = None, l2_valMean=0.,
                      blockLabels=None, ref=None,
@@ -43,7 +43,6 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
 
     if l2_nblocks is None: l2_nblocks = nblocks
     assert nparticles == 1, "Only one particle currently supported."
-    if std is None: std = torch.std(noisy.reshape(-1)).item()
 
     # -------------------------------
     #
@@ -64,11 +63,13 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
     mask = torch.zeros(h+2*nbHalf,w+2*nbHalf).to(device)
     MAX_SEARCH_FRAMES = 4
     numSearch = min(MAX_SEARCH_FRAMES,nframes-1)
+    if std is None: std = torch.std(noisy.reshape(-1)).item()
     if np.isclose(valMean,0):
         ps2 = patchsize**2
         t = numSearch + 1
-        valMean = (t - 1) / t**2 * std**2 #* (ps2- 2)/ps2
-
+        c2 = ((t-1)/t)**2 * std**2 + (t-1)/t**2 * std**2
+        mode = (1 - 2/p)*theory_npn.c2*p
+        valMean = mode
 
     # -------------------------------
     #
@@ -92,7 +93,7 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
     # l2_locs = torch.zeros_like(locs)
     l2_locs = locs
 
-    # # -- 2.) create local search radius from topK locs --
+    # -- 2.) create local search radius from topK locs --
     nframes,nimages,h,w,k,two = locs.shape
     search_ranges = create_search_ranges(nblocks,h,w,nframes)
     search_ranges = torch.LongTensor(search_ranges[:,None]).to(device)
@@ -102,214 +103,8 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
     img_shape[0] = tnoisy.shape[-3]
 
     # -- 4.) update "val" from "l2" to "burst" @ curr --
-    print("l2_locs.shape ",l2_locs.shape)
-    l2_flow = locs2flow(l2_locs)
-    print("l2_locs @ (16,16): ",l2_locs[:,0,16,16,0,:])
-    print("l2_flow @ (16,16): ",l2_flow[:,0,16,16,0,:])
-    l2_flow_v2 = l2_flow.clone()
-    # l2_flow_v2[0,0,16,16,0,0] = 0
-    # l2_flow_v2[2,0,16,16,0,0] = 0
-    # l2_flow_v2[0,0,0,0,0,0] = 0
-    # l2_flow_v2[2,0,0,0,0,0] = 0
-    l2_flow_v2[0,0,:,:,0,0] = l2_flow_v2[0,0,16,16,0,0]
-    l2_flow_v2[2,0,:,:,0,0] = l2_flow_v2[2,0,16,16,0,0]
-    print("l2_flow_v2 @ (16,16): ",l2_flow_v2[:,0,16,16,0,:])
-    print("-"*30)
-
-    print("-"*30)
-    print("-"*30)
-    l2_locs_stnd = l2_locs
-    l2_locs = rearrange(l2_locs,'t i h w 1 two -> i (h w) t two')
-    l2_flow = rearrange(l2_flow,'t i h w 1 two -> i (h w) t two')
-    l2_flow_v2 = rearrange(l2_flow_v2,'t i h w 1 two -> i (h w) t two')
-    vals,e_locs = evalAtLocs(tnoisy, l2_locs_stnd, 1,
+    vals,e_locs = evalAtLocs(tnoisy, l2_locs, 1,
                              nblocks, img_shape=img_shape)
-    elocs_vals = vals
-    print("Mode of Vals: ",mode_vals(vals,int_shape))
-    print("Std of Vals: ",torch.std(vals).item())
-    print("[evalAtLocs] vals @ (16,16): ",vals[0,16,16,0].item())
-    print("-"*30)
-
-
-    vals,_ = evalAtFlow(tnoisy, l2_flow, 1,
-                        nblocks, img_shape = img_shape)
-    flow_vals = vals
-    print("Mode of Vals: ",mode_vals(vals,int_shape))
-    print("Std of Vals: ",torch.std(vals).item())
-    print("[flow] vals @ (16,16): ",vals[0,16,16,0].item())
-    print("-"*30)
-
-
-    vals,_ = evalAtFlow(tnoisy, l2_flow_v2, 1,
-                        nblocks, img_shape = img_shape)
-    flow_v2_vals = vals
-    print("Mode of Vals: ",mode_vals(vals,int_shape))
-    print("Std of Vals: ",torch.std(vals).item())
-    print("[flow_v2] vals @ (16,16): ",vals[0,16,16,0].item())
-    print("-"*30)
-
-    vals,_ = evalAtFlow(tnoisy, l2_locs, 1,
-                        nblocks, img_shape = img_shape)
-    locs_vals = vals
-    print("Mode of Vals: ",mode_vals(vals,int_shape))
-    print("Std of Vals: ",torch.std(vals).item())
-    print("[locs] vals @ (16,16): ",vals[0,16,16,0].item())
-    print("-"*30)
-
-    print("-"*30)
-    print("-"*30)
-
-    delta = np.abs(flow_vals[0,16,16,0].item() - locs_vals[0,16,16,0].item())
-    print("[abs(flow - locs)]: vals @ (16,16) ",delta)
-    print("Mode: ",mode_vals(vals,int_shape))
-    vals = torch.abs(vals - valMean)
-    print("[Post] Mode: ",mode_vals(vals,int_shape))
-    print("valMean: ",valMean)
-    # assert torch.all(vals > 0), "all 
-
-    search_blocks,_ = getBlockLabels(None,nblocks,torch.long,device,True,t=nframes)
-    nsearch = search_blocks.shape[1]
-    print("search_blocks.shape ",search_blocks.shape)
-    
-    # xgrid = [14,15,16,17,14,15,16,17,18,19,9,8,9,8,9,8,9,8]
-    # ygrid = [14,14,14,14,15,15,15,15,16,16,17,17,10,11,12,10,11,12,10,11]
-    x,y = np.mgrid[3:28,3:28]
-    xgrid,ygrid = np.stack(x).ravel(),np.stack(y).ravel()
-    obs = []
-    for x,y in zip(xgrid,ygrid):
-        f = torch.LongTensor([[0,0],[0,0]]).to(device)
-        for l in range(nsearch):
-            f[0,:] = search_blocks[0,l,:]
-            f[1,:] = search_blocks[2,l,:]
-            # print("dnoisy [[-1,1],[0,0],[1,-1]]")
-            frame1 = tnoisy[0,0,:,x+f[0,0]+nbHalf,y+f[0,1]+nbHalf]
-            frame2 = tnoisy[1,0,:,x+nbHalf,y+nbHalf]
-            frame3 = tnoisy[2,0,:,x+f[1,0]+nbHalf,y+f[1,1]+nbHalf]
-            frames = torch.stack([frame1,frame2,frame3],dim=0)
-            ave = torch.mean(frames,dim=0)[None,:]
-            cond = f[0,0] == -1 and f[0,1] == 1 and f[1,0] == 1 and f[1,1] == -1
-            if cond:
-                # print(frames.shape)
-                # print(ave.shape)
-                # print(f)
-                # check = torch.mean((frames[0] - frames[1])**2).item()
-                # print(check)
-                # check = torch.mean((frames[2] - frames[1])**2).item()
-                # print(check)
-                delta0 = torch.mean((frames[0] - ave)**2).item()
-                # print(delta0)
-                delta1 = torch.mean((frames[1] - ave)**2).item()
-                # print(delta1)
-                delta2 = torch.mean((frames[2] - ave)**2).item()
-                # print(delta2)
-                # delta = torch.mean((frames - ave)**2).item()
-                # print(delta)
-                obs.append(delta0)
-                obs.append(delta1)
-                obs.append(delta2)
-
-                check = torch.mean(((frames[1] - frames[0] +
-                                     frames[2] - frames[0])/3.)**2).item()
-                # print("c",check)
-
-    obs = np.array(obs).ravel()
-    print("obs.shape: ",obs.shape)
-    mode = mode_ndarray(obs)
-    print("Mean: ",np.mean(obs))
-    print("Std: ",np.std(obs))
-    print("Mode: ",mode)
-    print("-"*80)
-
-    rands = np.random.permutation(len(obs))[:100]
-    sub_obs = np.array(obs[rands])
-    mode = mode_ndarray(sub_obs)
-    print("Mean: ",np.mean(sub_obs))
-    print("Std: ",np.std(sub_obs))
-    print("Mode: ",mode)
-    print("-"*80)
-
-    rands = np.random.permutation(len(obs))[:100]
-    sub_obs = np.array(obs[rands])
-    mode = mode_ndarray(sub_obs)
-    print("Mean: ",np.mean(sub_obs))
-    print("Std: ",np.std(sub_obs))
-    print("Mode: ",mode)
-    print("-"*80)
-
-    rands = np.random.permutation(len(obs))[:100]
-    sub_obs = np.array(obs[rands])
-    mode = mode_ndarray(sub_obs)
-    print("Mean: ",np.mean(sub_obs))
-    print("Std: ",np.std(sub_obs))
-    print("Mode: ",mode)
-    print("-"*80)
-
-
-    import matplotlib
-    matplotlib.use('agg')
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    fig,ax = plt.subplots(1,figsize=(8,8))
-    sns.kdeplot(obs,label="obs",ax=ax)
-    plt.savefig("./bp_search_rand.png",
-                transparent=True,dpi=300)
-    plt.close("all")
-
-    exit()
-        
-        # if np.abs(delta-0.50705) < 1e-3:
-        #     print(f)
-        #     print(delta)
-    
-    print("dnoisy [[-1,1],[0,0],[1,-1]]")
-    frame1 = tnoisy[0,0,:,15+nbHalf,17+nbHalf]
-    frame2 = tnoisy[1,0,:,16+nbHalf,16+nbHalf]
-    frame3 = tnoisy[2,0,:,17+nbHalf,15+nbHalf]
-    frames = torch.stack([frame1,frame2,frame3],dim=0)
-    ave = torch.mean(frames,dim=0)[None,:]
-    delta = torch.sum((frames - ave)**2).item()/2.
-    print(delta)
-
-    print("dnoisy [[1,1],[0,0],[-1,-1]]")
-    frame1 = tnoisy[0,0,:,17+nbHalf,17+nbHalf]    
-    frame2 = tnoisy[1,0,:,16+nbHalf,16+nbHalf]
-    frame3 = tnoisy[2,0,:,15+nbHalf,15+nbHalf]
-    frames = torch.stack([frame1,frame2,frame3],dim=0)
-    ave = torch.mean(frames,dim=0)[None,:]
-    delta = torch.sum((frames - ave)**2).item()/2.
-    print(delta)
-
-    print("dnoisy [[-1,0],[0,0],[1,0]]")
-    frame1 = tnoisy[0,0,:,15+nbHalf,16+nbHalf]    
-    frame2 = tnoisy[1,0,:,16+nbHalf,16+nbHalf]
-    frame3 = tnoisy[2,0,:,17+nbHalf,16+nbHalf]
-    frames = torch.stack([frame1,frame2,frame3],dim=0)
-    ave = torch.mean(frames,dim=0)[None,:]
-    delta = torch.sum((frames - ave)**2).item()/2.
-    print(delta)
-
-    # dnoisy = torch.sum((tnoisy[0,0,:,15,17] - tnoisy[1,0,:,16,16])**2).item()
-    # print(dnoisy)
-    # dnoisy = torch.sum((tnoisy[2,0,:,17,15] - tnoisy[1,0,:,16,16])**2).item()
-    # print(dnoisy)
-
-    print("dnoisy [[0,1],[0,-1]]")
-    print("tnoisy.shape ",tnoisy.shape)
-    frame1 = tnoisy[0,0,:,17+nbHalf,15+nbHalf]    
-    frame2 = tnoisy[1,0,:,16+nbHalf,16+nbHalf]
-    frame3 = tnoisy[2,0,:,15+nbHalf,17+nbHalf]
-    frames = torch.stack([frame1,frame2,frame3],dim=0)
-    ave = torch.mean(frames,dim=0)[None,:]
-    delta = torch.sum((frames - ave)**2).item()
-    print(delta)
-
-    # dnoisy = torch.sum((tnoisy[0,0,:,15,16] - tnoisy[1,0,:,16,16])**2).item()
-    # print(dnoisy)
-    # dnoisy = torch.sum((tnoisy[2,0,:,17,16] - tnoisy[1,0,:,16,16])**2).item()
-    # print(dnoisy)
-
-
-    exit()
 
     # -- 5.) warp burst to top location --
     pixPad = (tnoisy.shape[-1] - noisy.shape[-1])//2
@@ -326,6 +121,7 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
     left = search_blocks[:ngroups//2] 
     right = search_blocks[ngroups//2+1:] 
     search_blocks = torch.cat([search_blocks[[ngroups//2]],left,right],dim=0)
+    print("search_blocks.shape: ",search_blocks.shape)
     
     # -------------------------------
     #
@@ -333,14 +129,19 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
     #
     # -------------------------------
 
-    print("valMean: ",valMean)
     counts = torch.zeros(nframes)
     for i in range(niters):
         prev_locs = locs.clone()
 
         # -- 1.) cluster each pixel across time --
-        search_frames,names,nuniuqes = temporal_inliers_outliers(tnoisy,warped_noisy,vals,
-                                                                 std,numSearch=numSearch)
+        search_frames,names,nuniuqes = temporal_inliers_outliers(tnoisy,warped_noisy,
+                                                                 vals,std,
+                                                                 numSearch=numSearch)
+        print(f"{i}")
+        print("locs.shape: ",locs.shape)
+        print("search_frames.shape: ",search_frames.shape)
+        print("search_blocks.shape: ",search_blocks.shape)
+
         # print("Names: ",list(names.cpu().numpy()))
         counts[names] += 1
 
@@ -357,8 +158,8 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
                                           sub_locs,names,False)
         max_displ = torch.abs(locs).max().item()
         assert max_displ <= nbHalf, "displacement must remain contained!"
-        print("vals @ (16,16): ",vals[0,16,16,0])
-        print("sub_vals @ (16,16): ",sub_vals[0,16,16,0])
+        # print("vals @ (16,16): ",vals[0,16,16,0])
+        # print("sub_vals @ (16,16): ",sub_vals[0,16,16,0])
 
         # -- 4.) rewarp bursts --
         pad_locs = padLocs(locs,nbHalf,'extend')
@@ -383,7 +184,6 @@ def runBpSearch_rand(noisy, clean, patchsize, nblocks, k = 1,
     # -------------------------------
     # print("Counts: ",counts)
 
-    # exit()
     # -- get the output image from tiled image --
     warped_noisy = center_crop(warped_noisy,ishape)
     warped_noisy = index_along_ftrs(warped_noisy,patchsize,c)
