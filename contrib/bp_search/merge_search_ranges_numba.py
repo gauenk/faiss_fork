@@ -16,7 +16,7 @@ from .utils import pix2locs
 def merge_search_ranges(pix,names,sranges,nblocks,pixAreLocs=False,drift=False):
 
     # -- unpack shapes --
-    nsearch,nimages,h,w,nelems,two = sranges.shape
+    nsearch,nimages,h,w,nframes,two = sranges.shape
     nframes,nimages,h,w,k,two = pix.shape
     names = rearrange(names,'i t 1 h w -> t i h w 1')
     nframes,nimages,hN,wN,one = names.shape
@@ -163,11 +163,11 @@ def merge_search_ranges_numba_cuda(glocs,offsets,locs,names,sranges,nblocks,grid
                 for y_b in range(0,grid.shape[2]):
                     for x_b in range(0,grid.shape[3]):
                         if grid[hIdx,wIdx,y_b,x_b] == nelems:
-                            glocs[sIdx,hIdx,wIdx,groupID,0] = x_b
-                            glocs[sIdx,hIdx,wIdx,groupID,1] = y_b
+                            glocs[sIdx,hIdx,wIdx,groupID,0] = x_b - mid
+                            glocs[sIdx,hIdx,wIdx,groupID,1] = y_b - mid
                             if first:
-                                offsets[hIdx,wIdx,0] = x_b + nbHalf
-                                offsets[hIdx,wIdx,1] = y_b + nbHalf
+                                offsets[hIdx,wIdx,0] = x_b# + nbHalf
+                                offsets[hIdx,wIdx,1] = y_b# + nbHalf
                                 first = False
                             sIdx += 1
         
@@ -233,29 +233,29 @@ def merge_search_ranges_launcher(glocs,offsets,locs,names,sranges,nblocks,groupI
                                                              sranges,nblocks,grid_nb,
                                                              groupID,refT,drift)
 
-    # print(f"--- GroupID [{groupID}] ---")
+    print(f"--- GroupID [{groupID}] ---")
 
-    # nbHalf = nblocks//2
-    # hIdx = 5+nbHalf
-    # wIdx = 6+nbHalf
+    nbHalf = nblocks//2
+    hIdx = 5+nbHalf
+    wIdx = 6+nbHalf
 
-    # print("--- locs ---")
-    # print(locs.shape)
-    # print(locs[:,hIdx,wIdx])
+    print("--- locs ---")
+    print(locs.shape)
+    print(locs[:,hIdx,wIdx])
 
-    # print("--- names ---")
-    # print(names[:,hIdx,wIdx])
+    print("--- names ---")
+    print(names[:,hIdx,wIdx])
 
-    # print("--- grids ---")
-    # print(grid[hIdx,wIdx])
+    print("--- grids ---")
+    print(grid[hIdx,wIdx])
 
-    # print("--- glocs ---")
-    # print(glocs[:,hIdx,wIdx,groupID,:])
+    print("--- glocs ---")
+    print(glocs[:,hIdx,wIdx,groupID,:])
 
-    # print("--- offsets ---")
-    # print(offsets[16,15])
-    # print(offsets[15,16])
-    # print(offsets[16,16])
+    print("--- offsets ---")
+    print(offsets[hIdx,wIdx])
+    print(offsets[hIdx,wIdx])
+    print(offsets[hIdx,wIdx])
 
     # print("--- locs ---")
     # print(locs.shape)

@@ -47,7 +47,8 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
                 valMean = 0.,std=None,
                 l2_nblocks = None, l2_valMean=0.,
                 blockLabels=None, ref=None,
-                to_flow=False, fmt=False, gt_info=None):
+                to_flow=False, fmt=False, gt_info=None,
+                img_shape = None):
 
     if l2_nblocks is None: l2_nblocks = nblocks
     assert nparticles == 1, "Only one particle currently supported."
@@ -67,7 +68,8 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
 
     device = noisy.device
     nframes,nimages,c,h,w = noisy.shape
-    img_shape = [c,h,w]
+    if img_shape is None: img_shape = [c,h,w]
+    c,h,w = img_shape
     pad = 2*(nblocks//2)
     ishape = [h,w]
     isize = edict({'h':h,'w':w})

@@ -34,20 +34,22 @@ from easydict import EasyDict as edict
 
 import sys
 sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib/")
+from pyutils import save_image
 
 from .utils import create_search_ranges,warp_burst_from_pix,warp_burst_from_locs,compute_temporal_cluster,update_state,locs_frames2groups,compute_search_blocks,pix2locs,index_along_ftrs,flow_to_groups,cluster_frames_by_groups,update_state_locs,compute_mode,grouped_flow
 from .merge_search_ranges_numba import merge_search_ranges
+from .approx_exh import runBpSearchApproxExh
 
 center_crop = torchvision.transforms.functional.center_crop
 resize = torchvision.transforms.functional.resize
 th_pad = torchvision.transforms.functional.pad
 
-def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
-                nparticles = 1, niters = 1,
-                valMean = 0.,std=None,
-                l2_nblocks = None, l2_valMean=0.,
-                blockLabels=None, ref=None,
-                to_flow=False, fmt=False, gt_info=None):
+def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
+                             nparticles = 1, niters = 3,
+                             valMean = 0.,std=None,
+                             l2_nblocks = None, l2_valMean=0.,
+                             blockLabels=None, ref=None,
+                             to_flow=False, fmt=False, gt_info=None):
 
     if l2_nblocks is None: l2_nblocks = nblocks
     assert nparticles == 1, "Only one particle currently supported."
@@ -58,6 +60,7 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
         groups = groups.to(noisy.device,non_blocking=True)
         locs_gt = flow2locs(flow)
         locs_gt = rearrange(locs_gt,'i t h w two -> 1 i h w t two')
+    print("ngroups: ",ngroups)
 
     # -------------------------------
     #
@@ -89,12 +92,14 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
 
     # -- 1.) run l2 local search --
     vals,pix = nnf_utils.runNnfBurst(noisy, patchsize, l2_nblocks,
-                                      k=nparticles, valMean = l2_valMean,
-                                      img_shape = None)
+                                     k=nparticles, valMean = l2_valMean,
+                                     img_shape = None)
     vals = torch.mean(vals,dim=0).to(device)
     l2_vals = vals
     pix = pix.to(device)
-    locs = torch.zeros_like(pix2locs(pix))
+    locs = pix2locs(pix)
+    locs[6,...,0] = 0
+    # locs = torch.zeros_like(locs)
     l2_locs = locs
 
     # -- 2.) create local search radius from topK locs --
@@ -117,6 +122,7 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
     pad_search_ranges = create_search_ranges(nblocks,hP,wP,nframes)
     pad_search_ranges = torch.LongTensor(pad_search_ranges[:,None]).to(device)
 
+    save_image("noisy.png",noisy)
 
     # -------------------------------
     #
@@ -148,179 +154,162 @@ def runBpSearch(noisy, clean, patchsize, nblocks, k = 1,
     mode = torch.mean(modes*ngroups).item()
     refGroup = groups[nframes//2,0,16,16].item()
     mask = torch.ones_like(groups).type(torch.bool).contiguous()
+    groups_known = True
+
+    # print("-"*30)
+    # print(locs[:,0,16,16,0])
 
     exp_locs = locs
+    clK = [3,3,3,3,3,3,3,3,3,]
+    niters = len(clK)
     for i in range(niters):
 
-        # print("warped_noisy.shape: ",warped_noisy.shape)
         # -- 1.) cluster each pixel across time --
-        if groups_known:
+        if False and groups_known:
             # -- known groups --
-            pad = int(nblocks//2)
-            pad_groups = th_pad(groups,(pad,)*4,padding_mode='constant')
+            pad = nbHalf
+            pad_groups = th_pad(groups,(pad,)*4,padding_mode='reflect')
             wmeans = cluster_frames_by_groups(warped_noisy[0],pad_groups,ngroups)
             names = pad_groups[None,:]
             ud_names = groups
+            refG = refGroup
         else:
             # -- unknown groups --
             K = clK[i]
             names,means,weights,mask = compute_temporal_cluster(warped_noisy,K)
-            wmeans = means * weights/nframes
+            wmeans = means /weights #* weights/nframes
             wmeans = wmeans[0] # nparticles == 1
             wmeans = wmeans.contiguous()
             cc_names = center_crop(names,ishape)
+            ud_names = center_crop(rearrange(names,'1 t i h w -> t i h w'),ishape)
+            ngroups = names.max().item() + 1
+            refG = names[0,nframes//2,0,16,16].item()
+            refGroup = refG
+        print("names.shape: ",names.shape)
+        print("ud_names.shape: ",ud_names.shape)
         
-        # # -- 2.) denoise each group (e.g. use averages) --
-        # dclusters = denoise_clustered_noisy(wnoisy,clusters,ave_denoiser)
-
-        # -- 3.i) create combinatorial search blocks from search ranges  --
-        refG = nframes//2
-        pad_locs = padLocs(locs,nbHalf,'extend') # since patchsize is 1 here.
+        # -- 2.) create combinatorial search blocks from search ranges  --
+        pad_locs = padLocs(locs,nbHalf,'extend')
         merged_search_ranges,offsets = merge_search_ranges(pad_locs,names,
                                                            pad_search_ranges,
-                                                           nblocks,pixAreLocs=True)
-        # print("merged_search_ranges[...]:\n",merged_search_ranges[:,0,16,16,:,:])
-        # print("merged_search_ranges[...]:\n",merged_search_ranges[:,0,16,16,4,:])
-        # print("merged_search_ranges.shape: ",merged_search_ranges.shape)
-
-        # -- 3.ii) search space --
-        refG = refGroup
+                                                           nblocks,pixAreLocs=True,
+                                                           drift=True)
+        print("merged_search_ranges.shape: ",merged_search_ranges.shape)
+        merged_search_ranges = torch.flip(merged_search_ranges,dims=(-1,))
         search_blocks = compute_search_blocks(merged_search_ranges,refG)
-        # print(search_blocks[:,0,16,16,4,:])
-        # print(search_blocks[:,0,16,16,4,:].shape)
-        # for i in range(search_blocks.shape[0]):
-        #     print(search_blocks[i,0,16,16,4,:])
-        search_blocks = rearrange(search_blocks,'l i h w t two -> l i t two h w')
-        search_blocks = center_crop(search_blocks,img_shape[1:])
-        search_blocks = rearrange(search_blocks,'l i t two h w -> l i h w t two')
-        search_blocks = search_blocks.contiguous()
 
-        # nbHalf = int(nblocks//2)
-        # sblocks = search_blocks[:,0,20,20,:,:].type(torch.long)
-        # square = torch.zeros(ngroups,nblocks,nblocks)
-        # for i in range(sblocks.shape[0]):
-        #     for t in range(ngroups):
-        #         a = sblocks[i,t,0].item()+nbHalf
-        #         b = sblocks[i,t,1].item()+nbHalf
-        #         square[t,a,b] += 1
-        # print(square)
-        # exit()
+        # assert torch.all(search_blocks[...,refGroup,:]==0).item() is True,"no search."
+        print(names[0,:,0,18,18])
+        print(pad_locs[:,0,16,16,0,:])
+        print_msr = merged_search_ranges[:,0,16,16,:,:]
+        print("print_msr.shape: ",print_msr.shape)
+        print_msr = rearrange(print_msr,'r t two -> t r two')
+        print(print_msr)
+        exit()
 
-        
-        # -- 4.) exh srch over a clusters --
-        print("search_blocks.shape: ",search_blocks.shape)
-        sub_vals,sub_locs = runSubBurstNnf(wmeans,1,nblocks,k=1,# patchsize=1 since tiled
-                                           mask=mask,valMean=mode,
-                                           blockLabels=search_blocks,
-                                           img_shape = img_shape)
-        sub_locs = rearrange(sub_locs,'i t h w k two -> t i h w k two')
+        # -- 3.) apprx exh srch over a clusters --
+        # print("\n\n\n\n Approx. \n\n\n\n")
+        sub_vals,sub_locs = runBpSearchApproxExh(wmeans,1,nblocks,k=1,
+                                                 valMean=0.,#mode,
+                                                 ref=refGroup,
+                                                 blockLabels=search_blocks,
+                                                 niters=5,
+                                                 img_shape = img_shape)
+        # print("search_blocks.shape: ",search_blocks.shape)
+        # print("wnoisy.shape: ",wnoisy.shape)
+        # sub_vals,sub_locs = runSubBurstNnf(wmeans,1,nblocks,k=1,
+        #                                    valMean=0.,#mode,
+        #                                    blockLabels=search_blocks,
+        #                                    img_shape = img_shape)
+        # sub_vals,sub_locs = runSubBurstNnf(noisy,patchsize,nblocks,k=1)
+        # sub_locs = rearrange(sub_locs,'i t h w k two -> t i h w k two')
+        print("sub_locs.shape: ",sub_locs.shape)
+        print("locs.shape: ",locs.shape)
+        print("[a]: ",sub_vals[0,16,16,0].item())
+        print("[a]:\n",sub_locs[:,0,16,16,0,:])
+
+        # -- formatting --
         sub_locs = sub_locs.type(torch.long)
-
-        # print("sub_vals.shape: ",sub_vals.shape)
-        # print("sub_locs[:,0,16,16,0,:]")
-        # print(sub_locs[:,0,16,16,0,:])
-        # print("at searched: ",sub_vals[0,16,16,0].item())
-
-        # print("locs_gt.shape: ",locs_gt.shape)
-        # pad_locs_gt = padLocs(locs_gt,nbHalf,'extend')
-        # print("pad_locs_gt.shape: ",pad_locs_gt.shape)
-        # print("sub_locs.shape: ",sub_locs.shape)
+        print("Complete.")
         esub_locs = update_state_locs(locs,sub_locs,ud_names)
         locs = esub_locs
 
-        # pad_esub_locs = padLocs(esub_locs,nbHalf,'extend')
-        # print("pad_esub_locs.shape: ",pad_esub_locs.shape)
-        # # pad_locs_gt = rearrange(pad_locs_gt,'i t h w two -> 1 i h w t two')
-        # sub_vals,sub_locs = runSubBurstNnf(wnoisy,1,nblocks,k=1,
-        #                                    # patchsize=1 since tiled
-        #                                    mask=mask,valMean=valMean,
-        #                                    blockLabels=pad_esub_locs,
-        #                                    img_shape = img_shape)
+        plocs = padLocs(locs,pixPad)
+        warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,pisize)
 
-        # print("sub_vals.shape: ",sub_vals.shape)
-        # print("at searched optimal: ",sub_vals[0,16,16,0])
+        # print("-"*30)
+        # print(locs[:,0,16,16,0,:])
 
-        # sub_vals,sub_locs = runSubBurstNnf(wnoisy,1,
-        #                                    nblocks,k=1, # patchsize=1 since tiled
-        #                                    mask=mask,valMean=valMean,
-        #                                    blockLabels=pad_locs_gt,
-        #                                    img_shape = img_shape)
+        locs_gt = flow2locs(gt_info['flow'])
+        locs_gt = rearrange(locs_gt,'i t h w two -> t i h w 1 two')
+        # print("locs_gt")
+        # print(locs_gt[:,0,16,16,0,:])
 
-        # print("sub_vals.shape: ",sub_vals.shape)
-        # print("at optimal: ",sub_vals[0,16,16,0].item())
+        # eqs = torch.all(torch.all(locs == locs_gt,dim=-1),dim=0)
+        # perc_eq = torch.mean(eqs.type(torch.float)).item()
+        # print("perc_eq: ",perc_eq)
+        # print(torch.where(eqs == 0))
+        # print("eqs.shape: ",eqs.shape)
+        # eq_img = rearrange(eqs.type(torch.float),'i h w 1 -> i 1 h w')
+        # print("eq_img.shape: ",eq_img.shape)
+        # save_image(eq_img,"eq_image.png")
+        # print("search_blocks.shape: ",search_blocks.shape)
 
-        # gflow = grouped_flow(flow,groups)
-        # glocs = flow2locs(gflow)
-        # glocs = rearrange(glocs,'i t h w two -> 1 i h w t two')
-        # print("glocs.shape: ",glocs.shape)
-        # pad_glocs = padLocs(glocs,nbHalf,'extend')
-        # sub_vals,sub_locs = runSubBurstNnf(wmeans,1,
-        #                                    nblocks,k=1, # patchsize=1 since tiled
-        #                                    mask=mask,valMean=valMean,
-        #                                    blockLabels=pad_glocs,
-        #                                    img_shape = img_shape)
-
-        # print("with grouped, at optimal: ",sub_vals[0,16,16,0].item())
-        # print("glocs:\n",pad_glocs[0,0,16,16,:])
-
-
-
-        # glocs = glocs[0,0,16,16,:,:]
-        # eqs = torch.all(torch.all(sblocks == glocs,dim=-1),dim=-1)
-        # print(eqs.shape)
-        # print("torch.any(eqs): ",torch.any(eqs))
-        # print(torch.where(eqs))
-
-        # break
-
-        # exit()
+        locs_gt_srch = rearrange(locs_gt,'t i h w 1 two -> 1 i h w t two')
+        sub_vals,sub_locs = runSubBurstNnf(wnoisy,1,nblocks,k=1,
+                                           valMean=0.,
+                                           blockLabels=locs_gt_srch,
+                                           img_shape = img_shape)
+        sample_optimal = sub_vals[0,16,16,0].item()
+        print("Sample Optimal Value v.s. Computed Mode")
+        print(sample_optimal,mode)
 
         # -- 5.) re-compute vals from proposed locs --
-        ud_names = groups
-        print("TYPES")
-        print(locs.type())
-        print(sub_locs.type())
-        print(ud_names.type())
-        print(locs.shape)
-        print(sub_locs.shape)
-        print(ud_names.shape)
-        pad_locs = padLocs(locs,nbHalf,'extend')
-        sub_locs = sub_locs.type(torch.long)
-        print("locs.shape: ",locs.shape)
-        print("sub_locs.shape: ",sub_locs.shape)
-        print("ud_names.shape: ",ud_names.shape)
-        search_locs = update_state_locs(locs,sub_locs,ud_names)
-        print("search_locs.shape: ",search_locs.shape)
-        print("search_locs[:,0,16,16,0,:]")
-        print(search_locs[:,0,16,16,0,:])
-
-
-        # print("search_blocks.shape: ",search_blocks.shape)
+        # ud_names = groups
+        # print("TYPES")
+        # print(locs.type())
+        # print(sub_locs.type())
+        # print(ud_names.type())
+        # print(locs.shape)
+        # print(sub_locs.shape)
+        # print(ud_names.shape)
+        # pad_locs = padLocs(locs,nbHalf,'extend')
+        # sub_locs = sub_locs.type(torch.long)
         # print("locs.shape: ",locs.shape)
         # print("sub_locs.shape: ",sub_locs.shape)
-        print("search_locs.shape: ",search_locs.shape)
-        search_locs = rearrange(search_locs,'t i h w k two -> k i h w t two')
-        search_locs = search_locs.contiguous()
+        # print("ud_names.shape: ",ud_names.shape)
+        # search_locs = update_state_locs(locs,sub_locs,ud_names)
         # print("search_locs.shape: ",search_locs.shape)
-        prop_vals,prop_locs = runSubBurstNnf(wnoisy,1,nblocks,k=1,
-                                           blockLabels=search_locs,
-                                           img_shape=img_shape)
-        prop_locs = rearrange(prop_locs,'i t h w k two -> t i h w k two')
-
-        # -- 6.) update vals and locs --
-        cc_names = center_crop(names[...,0,:,:],img_shape[1:])
-        vals,locs,exp_locs = update_state(vals,locs,prop_vals,prop_locs,cc_names,False)
-        max_displ = np.max([locs.max().item(),np.abs(locs.min().item())])
-        assert max_displ <= nblocks//2, "displacement must remain contained!"
+        # print("search_locs[:,0,16,16,0,:]")
+        # print(search_locs[:,0,16,16,0,:])
 
 
-        # -- 7.) rewarp bursts --
-        pad_locs = padLocs(locs,nbHalf,'extend')
-        nframes,nimages,hP,wP,k,two = pad_locs.shape
-        psize = edict({'h':hP,'w':wP})
-        # p_exp_locs = padLocs(exp_locs,nbHalf,'extend')
-        warped_noisy = warp_burst_from_locs(wnoisy,pad_locs,nblocks,psize)
-        warped_clean = warp_burst_from_locs(wclean,pad_locs,nblocks,psize)
+        # # print("search_blocks.shape: ",search_blocks.shape)
+        # # print("locs.shape: ",locs.shape)
+        # # print("sub_locs.shape: ",sub_locs.shape)
+        # print("search_locs.shape: ",search_locs.shape)
+        # search_locs = rearrange(search_locs,'t i h w k two -> k i h w t two')
+        # search_locs = search_locs.contiguous()
+        # # print("search_locs.shape: ",search_locs.shape)
+        # prop_vals,prop_locs = runSubBurstNnf(wnoisy,1,nblocks,k=1,
+        #                                    blockLabels=search_locs,
+        #                                    img_shape=img_shape)
+        # prop_locs = rearrange(prop_locs,'i t h w k two -> t i h w k two')
+
+        # # -- 6.) update vals and locs --
+        # cc_names = center_crop(names[...,0,:,:],img_shape[1:])
+        # vals,locs,exp_locs = update_state(vals,locs,prop_vals,prop_locs,cc_names,False)
+        # max_displ = np.max([locs.max().item(),np.abs(locs.min().item())])
+        # assert max_displ <= nblocks//2, "displacement must remain contained!"
+
+
+        # # -- 7.) rewarp bursts --
+        # pad_locs = padLocs(locs,nbHalf,'extend')
+        # nframes,nimages,hP,wP,k,two = pad_locs.shape
+        # psize = edict({'h':hP,'w':wP})
+        # # p_exp_locs = padLocs(exp_locs,nbHalf,'extend')
+        # warped_noisy = warp_burst_from_locs(wnoisy,pad_locs,nblocks,psize)
+        # warped_clean = warp_burst_from_locs(wclean,pad_locs,nblocks,psize)
 
     warped_noisy = center_crop(wnoisy,ishape)
     warped_clean = center_crop(wclean,ishape)

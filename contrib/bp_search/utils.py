@@ -1,12 +1,14 @@
 
 
 import torch
+import torchvision
 import numpy as np
 from einops import rearrange,repeat
 from nnf_share import getBlockLabelsRaw,loc_index_names,pix2locs,warp_burst_from_pix,warp_burst_from_locs
 from align.xforms import align_from_pix
 from .th_kmeans import KMeans
 from .meshgrid_per_pixel import meshgrid_per_pixel_launcher
+center_crop = torchvision.transforms.functional.center_crop
 
 def batched_bincount(x, dim, max_value):
     target = torch.zeros(x.shape[0], max_value, dtype=x.dtype, device=x.device)
@@ -37,51 +39,58 @@ def create_search_ranges(nblocks,h,w,nframes,ref=None):
     search_ranges[...,ref,:] = 0
     return search_ranges
 
-def compute_search_blocks(sranges,refG):
+def compute_search_blocks(sranges,refG,img_shape=None):
 
     # -- init shapes and smesh -- 
     # print(sranges.shape)
     nsearch_per_group,nimages,h,w,ngroups,two = sranges.shape
     print("ngroups: ",ngroups)
     nsearch = nsearch_per_group**(ngroups-1) # since ref only has 1 elem
-    smesh = torch.zeros(nsearch,nimages,h,w,ngroups,two).type(torch.int)
-    smesh = smesh.to(sranges.device)
+    # smesh = torch.zeros(nsearch,nimages,h,w,ngroups,two).type(torch.int)
+    # smesh = smesh.to(sranges.device)
+
+    # # -- numba-fy values --
+    # for i in range(nimages):
+    #     meshgrid_per_pixel_launcher(sranges[:,i],smesh[:,i],refG)
+    #     smesh[:,i] = torch.flip(smesh[:,i],dims=(-1,))
 
     # -- [for testing] version 2 --
-    # ranges0 = sranges[:,0,0,0,-1,0].cpu().numpy()
-    # ranges1 = sranges[:,0,0,0,-1,1].cpu().numpy()
-    # ranges0 = repeat(ranges0,'s -> s g',g=ngroups)
-    # ranges1 = repeat(ranges1,'s -> s g',g=ngroups)
-    # # ranges0[refG] = [0]
-    # # ranges1[refG] = [0]
-    # print("ranges0.shape: ",ranges0.shape)
+    ranges0 = sranges[:,0,0,0,-1,0].cpu().numpy()
+    ranges1 = sranges[:,0,0,0,-1,1].cpu().numpy()
+    ranges0 = repeat(ranges0,'s -> s g',g=ngroups)
+    ranges1 = repeat(ranges1,'s -> s g',g=ngroups)
+    # ranges0[refG] = [0]
+    # ranges1[refG] = [0]
+    print("ranges0.shape: ",ranges0.shape)
 
-    # ranges0 = [ ranges0[:,s] for s in range(ngroups)]
-    # ranges1 = [ ranges1[:,s] for s in range(ngroups)]
-    # print(ranges0[0])
-    # print("-"*30)
-    # ranges0[refG] = np.array([0])
-    # ranges1[refG] = np.array([0])
-    # print(len(ranges0))
-    # for s in range(ngroups): print(s,len(ranges0[s]))
+    ranges0 = [ ranges0[:,s] for s in range(ngroups)]
+    ranges1 = [ ranges1[:,s] for s in range(ngroups)]
+    print(ranges0[0])
+    print("-"*30)
+    ranges0[refG] = np.array([0])
+    ranges1[refG] = np.array([0])
+    print(len(ranges0))
+    for s in range(ngroups): print(s,len(ranges0[s]))
 
-    # smesh0 = np.meshgrid(*ranges0)
-    # smesh0 = np.stack([g.ravel() for g in smesh0])
-    # smesh1 = np.meshgrid(*ranges1)
-    # smesh1 = np.stack([g.ravel() for g in smesh1])
+    smesh0 = np.meshgrid(*ranges0)
+    smesh0 = np.stack([g.ravel() for g in smesh0])
+    smesh1 = np.meshgrid(*ranges1)
+    smesh1 = np.stack([g.ravel() for g in smesh1])
 
-    # print("smesh0.shape: ",smesh0.shape)
-    # smesh = np.stack([smesh0,smesh1],axis=-1)
-    # print("smesh.shape: ",smesh.shape)
-    # smesh = repeat(smesh,'g l two -> l i h w g two',i=nimages,h=h,w=w)
-    # print("smesh.shape: ",smesh.shape)
-    # smesh = torch.IntTensor(smesh).to(sranges.device)
-    # print("nsearch: ",nsearch)
+    print("smesh0.shape: ",smesh0.shape)
+    smesh = np.stack([smesh0,smesh1],axis=-1)
+    print("smesh.shape: ",smesh.shape)
+    smesh = repeat(smesh,'g l two -> l i h w g two',i=nimages,h=h,w=w)
+    print("smesh.shape: ",smesh.shape)
+    smesh = torch.IntTensor(smesh).to(sranges.device)
+    print("nsearch: ",nsearch)
 
-    # -- numba-fy values --
-    for i in range(nimages):
-        meshgrid_per_pixel_launcher(sranges[:,i],smesh[:,i],refG)
-        smesh[:,i] = torch.flip(smesh[:,i],dims=(-1,))
+    # -- crop to img_shape --
+    if not(img_shape is None):
+        smesh = rearrange(smesh,'l i h w t two -> l i t two h w')
+        smesh = center_crop(smesh,img_shape[1:])
+        smesh = rearrange(smesh,'l i t two h w -> l i h w t two')
+        smesh = smesh.contiguous()
 
     return smesh
     
@@ -99,12 +108,12 @@ def add_offset_to_search_ranges(locs,search_ranges):
 
     return search_ranges_all
 
-def temporal_inliers_outliers(burst,wburst,vals,std,numSearch=3):
+def temporal_inliers_outliers(burst,wburst,vals,std,numSearch=3,ref=None):
 
     # -- shapes --
     device = burst.device
     nframes,nimages,nftrs,h,w = wburst.shape
-    ref = nframes//2
+    if ref is None: ref = nframes//2
     minNumOutliers = numSearch
     maxNumNeigh = nframes - minNumOutliers
     # maxNumNeigh = 3
@@ -247,6 +256,13 @@ def flow_to_groups(flow):
 
     # -- reshape to output --
     groups = rearrange(groups,'(i h w) t -> t i h w',h=H,w=W)
+    ngroups = groups.max().item()+1
+
+    # -- for testing --
+    # groups = torch.arange(nframes).to(flow.device)
+    # groups = repeat(groups,'t -> t i h w',i=nimages,h=H,w=W)
+    # ngroups = nframes
+
     return groups,ngroups
 
 def cluster_frames_by_groups(wburst,groups,ngroups):
@@ -262,6 +278,14 @@ def cluster_frames_by_groups(wburst,groups,ngroups):
     gburst = torch.zeros_like(wburst)
     gburst = gburst.scatter_add(0,groups,wburst)/counts
     gburst = gburst[:ngroups]
+
+    print("groups: ")
+    print(groups[:,0,0,16,16])
+    print(counts[:,0,0,16,16])
+    print(gburst[:,0,0,16,16])
+    print(wburst[:,0,0,16,16])
+
+    assert torch.any(torch.isnan(gburst)).item() is False, "[utils] no nan plz."
     del groups
     return gburst
 
@@ -311,6 +335,39 @@ def grouped_flow(flow,groups):
     return gflow
 
 def compute_temporal_cluster(wburst,K):
+    method = "per_frame"
+    if method == "per_frame":
+        return compute_temporal_cluster_per_frame(wburst,K)
+    elif method == "per_pixel":
+        return compute_temporal_cluster_per_pixel(wburst,K)    
+    else:
+        raise KeyError(f"Uknown method name [{method}]")
+
+def compute_temporal_cluster_per_frame(wburst,K):
+    # -- unpack --
+    nparticles,nframes,nimages,nftrs,h,w = wburst.shape
+
+    # -- compute per-pixel assignments --
+    rburst = rearrange(wburst,'p t i f h w -> (p i) t (h w f)')
+    rburst = rburst.contiguous()
+    names,means,counts,dists = KMeans(rburst, K=K, Niter=10, verbose=False, randDist=0.)
+
+    # -- shape for image sizes --
+    shape_args = {'p':nparticles,'i':nimages,'h':h,'w':w}
+    names = repeat(names,'(p i) t -> p t i h w',**shape_args)
+    means = repeat(means,'(p i) t (h w f) -> p t i f h w',**shape_args)
+    counts = repeat(counts,'(p i) t 1 -> p t i 1 h w',**shape_args)
+
+    # -- correct for "identical" matching; a cluster might be empty --
+    weights = counts/nframes
+    any_empty_clusters = torch.any(counts == 0).item()
+    assert any_empty_clusters == False,"No empty clusters!"
+    eq_zero = counts == 0
+    mask = torch.where(eq_zero,1,0).type(torch.bool)
+    
+    return names,means,weights,mask
+
+def compute_temporal_cluster_per_pixel(wburst,K):
     
     # -- unpack --
     nparticles,nframes,nimages,nftrs,h,w = wburst.shape
@@ -535,10 +592,10 @@ def update_state_locs(curr,prop,names):
     expanded = torch.zeros_like(curr)
     K = curr.shape[-2]
     for k in range(K):
-        print("prop.shape: ",prop.shape)
-        print("names.shape: ",names.shape)
-        print("curr.shape: ",curr.shape)
-        print("expanded.shape: ",expanded.shape)
+        # print("prop.shape: ",prop.shape)
+        # print("names.shape: ",names.shape)
+        # print("curr.shape: ",curr.shape)
+        # print("expanded.shape: ",expanded.shape)
         torch.gather(prop[...,k,0],0,names,out=expanded[...,k,0])
         torch.gather(prop[...,k,1],0,names,out=expanded[...,k,1])
 
