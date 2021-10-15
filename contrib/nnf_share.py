@@ -303,13 +303,15 @@ def getBlockLabelsFull(blockLabels,ishape,nblocks,dtype,device,is_tensor,t=None)
     if blLabels.dim() == 3:
         blLabels = repeat(blLabels,'t l two -> l h w t two',h=h,w=w)
     elif blLabels.dim() == 5:
-        blLabels = flip_array_like(blLabels,1) # we didn't actually want to flip
+        pass
+        #blLabels = flip_array_like(blLabels,1) # we didn't actually want to flip
     blockLabels_ptr = get_swig_ptr(blLabels)
     return blLabels,blockLabels_ptr
 
-def getBlockLabels(blockLabels,nblocks,dtype,device,is_tensor,t=None):
-    blockLabels = getBlockLabelsNumpy(blockLabels,nblocks,dtype,t)
-    blockLabels = flip_array_like(blockLabels,1)# TODO: why flip dim 1??
+def getBlockLabels(in_blockLabels,nblocks,dtype,device,is_tensor,t=None):
+    blockLabels = getBlockLabelsNumpy(in_blockLabels,nblocks,dtype,t)
+    if in_blockLabels is None:
+        blockLabels = flip_array_like(blockLabels,1)# TODO: why flip dim 1??
     if not(torch.is_tensor(blockLabels)) and is_tensor:
         if device != 'cpu':
             blockLabels = torch.cuda.IntTensor(blockLabels,device=device)

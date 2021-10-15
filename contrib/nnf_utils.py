@@ -45,15 +45,16 @@ def runNnfBurst(_burst, patchsize, nblocks, k = 1,
     # -- set padded images --
     nframes,nimages,c,h,w = burst.shape
     if img_shape is None: img_shape = (c,h,w)
+    iC,iH,iW = img_shape
     if ref_t is None: ref_t = nframes // 2
     if is_torch: dtype = torch.int32
     else: dtype = np.int32
     blockLabels,_ = getBlockLabels(blockLabels,nblocks,dtype,device,is_torch)
     
     # -- create ref indices-- 
-    npix = h*w
-    locs_ref = np.c_[np.unravel_index(np.arange(npix),(h,w))]
-    locs_ref = locs_ref.reshape(h,w,2)
+    npix = iH*iW
+    locs_ref = np.c_[np.unravel_index(np.arange(npix),(iH,iW))]
+    locs_ref = locs_ref.reshape(iH,iW,2)
     locs_ref = repeat(locs_ref,'h w two -> i h w k two',i=nimages,k=k)
     locs_ref = torch.IntTensor(locs_ref).to(device,non_blocking=True)
 
@@ -65,7 +66,7 @@ def runNnfBurst(_burst, patchsize, nblocks, k = 1,
         valsFrames,locsFrames = [],[]
         for t in range(nframes):
             if t == ref_t:
-                vals_t = torch.zeros((h,w,k),device=device)
+                vals_t = torch.zeros((iH,iW,k),device=device)
                 locs_t = locs_ref[i]
             else:
                 tgtImg = burst[t,i]

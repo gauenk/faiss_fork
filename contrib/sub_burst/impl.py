@@ -63,6 +63,10 @@ def _runBurstNnf(res, img_shape, total_nframes, burst, subAve, mask, vals, locs,
     img_shape = (c,h+2*psHalf,w+2*psHalf)
     bl,blockLabels_ptr = getBlockLabelsFull(blockLabels,img_shape,nblocks,locs.dtype,
                                             device,is_tensor,sub_nframes)
+    # print("bl.shape: ",bl.shape)
+    # for t in range(bl.shape[-2]):
+    #     all_zero = torch.all(bl[...,t,:]==0).item()
+    #     print("(t,all_zero): ",t,all_zero)
     # bl = rearrange(bl,'l h w t two -> l t two h w')
     # pad = (nblocks//2) + (patchsize//2)
     # pad = (patchsize//2)

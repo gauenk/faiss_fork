@@ -120,20 +120,20 @@ def merge_search_ranges_numba_cuda(glocs,offsets,locs,names,sranges,nblocks,grid
     if hIdx < height and wIdx < width:
 
         for t in range(nframes):
-            x = locs[t,hIdx,wIdx,0]
-            y = locs[t,hIdx,wIdx,1]
+            y = locs[t,hIdx,wIdx,0]
+            x = locs[t,hIdx,wIdx,1]
             name = names[t,hIdx,wIdx]
 
-            # locs to offests
-            x_offset = int(x - sranges[nsearch//2,hIdx,wIdx,t,0])
-            y_offset = int(y - sranges[nsearch//2,hIdx,wIdx,t,1])
+            # locs to offests: just (0,0) right now.
+            y_offset = int(y - sranges[nsearch//2,hIdx,wIdx,t,0])
+            x_offset = int(x - sranges[nsearch//2,hIdx,wIdx,t,1])
 
             # offsets -> block index
+            y_bindex = y_offset + nbHalf # spatial to matrix coords
             x_bindex = x_offset + nbHalf
-            y_bindex = -y_offset + nbHalf # spatial to matrix coords
 
-            x_tl = mid - x_bindex
             y_tl = mid - y_bindex
+            x_tl = mid - x_bindex
 
             if name == groupID: val = 1
             else: val = 0
@@ -163,21 +163,21 @@ def merge_search_ranges_numba_cuda(glocs,offsets,locs,names,sranges,nblocks,grid
                 for y_b in range(0,grid.shape[2]):
                     for x_b in range(0,grid.shape[3]):
                         if grid[hIdx,wIdx,y_b,x_b] == nelems:
-                            glocs[sIdx,hIdx,wIdx,groupID,0] = x_b - mid
-                            glocs[sIdx,hIdx,wIdx,groupID,1] = y_b - mid
+                            glocs[sIdx,hIdx,wIdx,groupID,0] = y_b - mid
+                            glocs[sIdx,hIdx,wIdx,groupID,1] = x_b - mid
                             if first:
-                                offsets[hIdx,wIdx,0] = x_b# + nbHalf
-                                offsets[hIdx,wIdx,1] = y_b# + nbHalf
+                                offsets[hIdx,wIdx,0] = y_b# + nbHalf
+                                offsets[hIdx,wIdx,1] = x_b# + nbHalf
                                 first = False
                             sIdx += 1
         
                 # -- shift the legal locs to the correctly shifted value elems --
-                sIdx = 0
-                shift_x = offsets[hIdx,wIdx,0]
-                shift_y = offsets[hIdx,wIdx,1]
-                for sIdx in range(0,glocs.shape[0]):
-                    glocs[sIdx,hIdx,wIdx,groupID,0] -= shift_x
-                    glocs[sIdx,hIdx,wIdx,groupID,1] -= shift_y
+                # sIdx = 0
+                # shift_x = offsets[hIdx,wIdx,0]
+                # shift_y = offsets[hIdx,wIdx,1]
+                # for sIdx in range(0,glocs.shape[0]):
+                #     glocs[sIdx,hIdx,wIdx,groupID,0] -= shift_x
+                #     glocs[sIdx,hIdx,wIdx,groupID,1] -= shift_y
                             
             else:
                 sIdx = 0
@@ -233,29 +233,29 @@ def merge_search_ranges_launcher(glocs,offsets,locs,names,sranges,nblocks,groupI
                                                              sranges,nblocks,grid_nb,
                                                              groupID,refT,drift)
 
-    print(f"--- GroupID [{groupID}] ---")
+    # print(f"--- GroupID [{groupID}] ---")
 
-    nbHalf = nblocks//2
-    hIdx = 5+nbHalf
-    wIdx = 6+nbHalf
+    # nbHalf = nblocks//2
+    # hIdx = 16+nbHalf
+    # wIdx = 16+nbHalf
 
-    print("--- locs ---")
-    print(locs.shape)
-    print(locs[:,hIdx,wIdx])
+    # print("--- locs ---")
+    # print(locs.shape)
+    # print(locs[:,hIdx,wIdx])
 
-    print("--- names ---")
-    print(names[:,hIdx,wIdx])
+    # print("--- names ---")
+    # print(names[:,hIdx,wIdx])
 
-    print("--- grids ---")
-    print(grid[hIdx,wIdx])
+    # print("--- grids ---")
+    # print(grid[hIdx,wIdx])
 
-    print("--- glocs ---")
-    print(glocs[:,hIdx,wIdx,groupID,:])
+    # print("--- glocs ---")
+    # print(glocs[:,hIdx,wIdx,groupID,:])
 
-    print("--- offsets ---")
-    print(offsets[hIdx,wIdx])
-    print(offsets[hIdx,wIdx])
-    print(offsets[hIdx,wIdx])
+    # print("--- offsets ---")
+    # print(offsets[hIdx,wIdx])
+    # print(offsets[hIdx,wIdx])
+    # print(offsets[hIdx,wIdx])
 
     # print("--- locs ---")
     # print(locs.shape)

@@ -36,7 +36,8 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
                          nparticles = 1, niters = 5,
                          valMean = 0., std = None,
                          l2_nblocks = None, l2_valMean=0.,
-                         blockLabels=None, ref=None,
+                         blockLabels=None,
+                         search_ranges=None, ref=None,
                          to_flow=False, fmt=False,
                          img_shape = None):
 
@@ -109,13 +110,16 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
 
     # -- 2.) create local search radius from topK locs --
     nframes,nimages,h,w,k,two = locs.shape
-    search_ranges = create_search_ranges(nblocks,h,w,nframes)
-    search_ranges = torch.LongTensor(search_ranges[:,None]).to(device)
+    sRefG = ref
+    if search_ranges is None:
+        search_ranges = create_search_ranges(nblocks,h,w,nframes)
+        search_ranges = torch.LongTensor(search_ranges[:,None]).to(device)
+        sRefG = nframes//2
 
     # -- 3.) pad and tile --
     eqH = noisy.shape[-2] == (img_shape[-2]+2*nbHalf)
     eqW = noisy.shape[-1] == (img_shape[-1]+2*nbHalf)
-    print("noisy.shape: ",noisy.shape)
+    # print("noisy.shape: ",noisy.shape)
     # print(eqH,eqW)
     # print(img_shape)
     if not(eqH and eqW):
@@ -137,7 +141,7 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
     ngroups = numSearch+1
     refG = ref#ngroups//2-1
     mid = ngroups//2
-    print("[approx_exh] ",refG,ngroups,ref)
+    # print("[approx_exh] ",refG,ngroups,ref)
     if blockLabels is None:
 
         search_blocks,_ = getBlockLabels(None,nblocks,torch.long,device,True,t=ngroups)
@@ -154,7 +158,7 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
         left = search_blocks[:mid] 
         right = search_blocks[mid+1:] 
         search_blocks = torch.cat([search_blocks[[mid]],left,right],dim=0)
-        print("None!")
+        # print("None!")
         search_blocks = repeat(search_blocks,'t l two -> l i h w t two',
                                i=nimages,h=h,w=w)
     else:
@@ -164,7 +168,7 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
         right = search_blocks[refG+1:] 
         search_blocks = torch.cat([search_blocks[[refG]],left,right],dim=0)
         search_blocks = rearrange(search_blocks,'t i h w l two -> l i h w t two')
-    print("[approx_exh] search_blocks.shape: ",search_blocks.shape)
+    # print("[approx_exh] search_blocks.shape: ",search_blocks.shape)
     # print(search_blocks[0])
     assert torch.all(search_blocks[...,0,:] == 0).item() is True, "all zero @ ref."
     # assert torch.all(search_blocks[0] == 0).item() is True, "all zero @ ref."
@@ -189,6 +193,19 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
         # print("names: ",names) # changes choices and order each iteration, ref #1 always
         counts[names] += 1
 
+        # -- 1.ii) create search space from cluster --
+        # merged_search_ranges,offsets = merge_search_ranges(pad_locs,names,
+        #                                                    pad_search_ranges,
+        #                                                    nblocks,pixAreLocs=True,
+        #                                                    drift=True)
+        # print("search_ranges.shape: ",search_ranges.shape)
+        msr = [search_ranges[...,sRefG,:]]
+        msr += [search_ranges[...,t,:] for t in names]
+        msr = torch.stack(msr,dim=-2)
+        # print("msr.shape: ",msr.shape)
+        assert torch.all(msr[...,0,:] == 0).item() is True, "all zero @ ref."
+        search_blocks = compute_search_blocks(msr,0)
+
         # -- 2.) exh srch over a selected frames --
         # print("-"*50)
         # print("Exh Search.")
@@ -206,7 +223,7 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
                                           sub_locs,names,False)
         # print(locs[:,0,16,16,0,:])
         max_displ = torch.abs(locs).max().item()
-        assert max_displ <= nbHalf, "displacement must remain contained!"
+        # assert max_displ <= nbHalf, "displacement must remain contained!"
 
         # -- 4.) rewarp bursts --
         pad_locs = padLocs(locs,nbHalf,'extend')

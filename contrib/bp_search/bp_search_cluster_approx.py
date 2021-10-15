@@ -36,7 +36,7 @@ import sys
 sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib/")
 from pyutils import save_image
 
-from .utils import create_search_ranges,warp_burst_from_pix,warp_burst_from_locs,compute_temporal_cluster,update_state,locs_frames2groups,compute_search_blocks,pix2locs,index_along_ftrs,flow_to_groups,cluster_frames_by_groups,update_state_locs,compute_mode,grouped_flow
+from .utils import create_search_ranges,warp_burst_from_pix,warp_burst_from_locs,compute_temporal_cluster,update_state,locs_frames2groups,compute_search_blocks,pix2locs,index_along_ftrs,flow_to_groups,cluster_frames_by_groups,update_state_locs,compute_mode,grouped_flow,smooth_locs,clip_loc_boarders
 from .merge_search_ranges_numba import merge_search_ranges
 from .approx_exh import runBpSearchApproxExh
 
@@ -98,9 +98,15 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     l2_vals = vals
     pix = pix.to(device)
     locs = pix2locs(pix)
-    locs[6,...,0] = 0
+    # locs[1,...,0] = 1
+    # locs[1,...,1] = -1
+    # locs[6,...,0] = 0
+    # locs[6,...,1] = -1
     # locs = torch.zeros_like(locs)
+    locs = smooth_locs(locs,nclusters=5)
+    locs = clip_loc_boarders(locs,patchsize,l2_nblocks,nblocks)
     l2_locs = locs
+    # exit()
 
     # -- 2.) create local search radius from topK locs --
     nframes,nimages,h,w,k,two = locs.shape
@@ -114,9 +120,11 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     ppix = padLocs(pix+pixPad,pixPad)
     plocs = padLocs(locs,pixPad)
 
+    print("pre warp!")
     warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,pisize)
     warped_clean = warp_burst_from_locs(wclean,plocs,1,pisize)
     img_shape[0] = wnoisy.shape[-3]
+    print("post warp!")
     
     hP,wP = h + 2*pixPad,w + 2*pixPad
     pad_search_ranges = create_search_ranges(nblocks,hP,wP,nframes)
@@ -133,8 +141,10 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     sub_vals = l2_vals
     sub_locs_rs = l2_locs
     psHalf = patchsize//2
+    print("pre eval.")
     vals,e_locs = evalAtLocs(wnoisy,sub_locs_rs, 1,
                              nblocks,img_shape=img_shape)
+    print("post eval.")
 
     # -------------------------------
     #
@@ -160,10 +170,11 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     # print(locs[:,0,16,16,0])
 
     exp_locs = locs
-    clK = [3,3,3,3,3,3,3,3,3,]
+    clK = [ngroups,]
     niters = len(clK)
     for i in range(niters):
 
+        print("pre cluster!")
         # -- 1.) cluster each pixel across time --
         if False and groups_known:
             # -- known groups --
@@ -185,8 +196,9 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
             ngroups = names.max().item() + 1
             refG = names[0,nframes//2,0,16,16].item()
             refGroup = refG
-        print("names.shape: ",names.shape)
-        print("ud_names.shape: ",ud_names.shape)
+        # print("names.shape: ",names.shape)
+        # print("ud_names.shape: ",ud_names.shape)
+        print("post cluster!")
         
         # -- 2.) create combinatorial search blocks from search ranges  --
         pad_locs = padLocs(locs,nbHalf,'extend')
@@ -194,27 +206,32 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
                                                            pad_search_ranges,
                                                            nblocks,pixAreLocs=True,
                                                            drift=True)
-        print("merged_search_ranges.shape: ",merged_search_ranges.shape)
-        merged_search_ranges = torch.flip(merged_search_ranges,dims=(-1,))
-        search_blocks = compute_search_blocks(merged_search_ranges,refG)
+        # print("merged_search_ranges.shape: ",merged_search_ranges.shape)
+        # merged_search_ranges = torch.flip(merged_search_ranges,dims=(-1,))
+        # search_blocks = compute_search_blocks(merged_search_ranges,refG)
+        msr = merged_search_ranges[:,0,16,16,:,:]
+        msr = rearrange(msr,'l t two -> t l two')
+        # print(msr,refG)
 
         # assert torch.all(search_blocks[...,refGroup,:]==0).item() is True,"no search."
-        print(names[0,:,0,18,18])
-        print(pad_locs[:,0,16,16,0,:])
-        print_msr = merged_search_ranges[:,0,16,16,:,:]
-        print("print_msr.shape: ",print_msr.shape)
-        print_msr = rearrange(print_msr,'r t two -> t r two')
-        print(print_msr)
-        exit()
+        # print(names[0,:,0,18,18])
+        # print(pad_locs[:,0,16,16,0,:])
+        # print_msr = merged_search_ranges[:,0,16,16,:,:]
+        # print("print_msr.shape: ",print_msr.shape)
+        # print_msr = rearrange(print_msr,'r t two -> t r two')
+        # print(print_msr)
+        # exit()
 
         # -- 3.) apprx exh srch over a clusters --
-        # print("\n\n\n\n Approx. \n\n\n\n")
+        print("\n\n\n\n Approx. \n\n\n\n")
         sub_vals,sub_locs = runBpSearchApproxExh(wmeans,1,nblocks,k=1,
                                                  valMean=0.,#mode,
                                                  ref=refGroup,
-                                                 blockLabels=search_blocks,
-                                                 niters=5,
+                                                 search_ranges=None,#merged_search_ranges,
+                                                 blockLabels=None,#search_blocks,
+                                                 niters=3,
                                                  img_shape = img_shape)
+        print("post approx.")
         # print("search_blocks.shape: ",search_blocks.shape)
         # print("wnoisy.shape: ",wnoisy.shape)
         # sub_vals,sub_locs = runSubBurstNnf(wmeans,1,nblocks,k=1,
@@ -234,14 +251,16 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
         esub_locs = update_state_locs(locs,sub_locs,ud_names)
         locs = esub_locs
 
+        print("pre warped.")
         plocs = padLocs(locs,pixPad)
         warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,pisize)
+        print("post warped.")
 
         # print("-"*30)
         # print(locs[:,0,16,16,0,:])
 
-        locs_gt = flow2locs(gt_info['flow'])
-        locs_gt = rearrange(locs_gt,'i t h w two -> t i h w 1 two')
+        # locs_gt = flow2locs(gt_info['flow'])
+        # locs_gt = rearrange(locs_gt,'i t h w two -> t i h w 1 two')
         # print("locs_gt")
         # print(locs_gt[:,0,16,16,0,:])
 
@@ -255,14 +274,14 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
         # save_image(eq_img,"eq_image.png")
         # print("search_blocks.shape: ",search_blocks.shape)
 
-        locs_gt_srch = rearrange(locs_gt,'t i h w 1 two -> 1 i h w t two')
-        sub_vals,sub_locs = runSubBurstNnf(wnoisy,1,nblocks,k=1,
-                                           valMean=0.,
-                                           blockLabels=locs_gt_srch,
-                                           img_shape = img_shape)
-        sample_optimal = sub_vals[0,16,16,0].item()
-        print("Sample Optimal Value v.s. Computed Mode")
-        print(sample_optimal,mode)
+        # locs_gt_srch = rearrange(locs_gt,'t i h w 1 two -> 1 i h w t two')
+        # sub_vals,sub_locs = runSubBurstNnf(wnoisy,1,nblocks,k=1,
+        #                                    valMean=0.,
+        #                                    blockLabels=locs_gt_srch,
+        #                                    img_shape = img_shape)
+        # sample_optimal = sub_vals[0,16,16,0].item()
+        # print("Sample Optimal Value v.s. Computed Mode")
+        # print(sample_optimal,mode)
 
         # -- 5.) re-compute vals from proposed locs --
         # ud_names = groups

@@ -39,7 +39,9 @@ def runBurstNnf(burst, patchsize, nblocks, k = 1,
         if not(in_locs is None): locs_i = locs_i[i]
         if not(mask is None): mask_i = mask[i]
         else: mask_i = None
-        if not(blockLabels is None): search_space_i = blockLabels[:,i]
+        if not(blockLabels is None):
+            search_space_i = blockLabels[:,i]
+            search_space_i = search_space_i.contiguous()
         else: search_space_i = None
 
         # -- execute over search space! --

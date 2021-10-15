@@ -44,7 +44,7 @@ def compute_search_blocks(sranges,refG,img_shape=None):
     # -- init shapes and smesh -- 
     # print(sranges.shape)
     nsearch_per_group,nimages,h,w,ngroups,two = sranges.shape
-    print("ngroups: ",ngroups)
+    # print("ngroups: ",ngroups)
     nsearch = nsearch_per_group**(ngroups-1) # since ref only has 1 elem
     # smesh = torch.zeros(nsearch,nimages,h,w,ngroups,two).type(torch.int)
     # smesh = smesh.to(sranges.device)
@@ -61,29 +61,29 @@ def compute_search_blocks(sranges,refG,img_shape=None):
     ranges1 = repeat(ranges1,'s -> s g',g=ngroups)
     # ranges0[refG] = [0]
     # ranges1[refG] = [0]
-    print("ranges0.shape: ",ranges0.shape)
+    # print("ranges0.shape: ",ranges0.shape)
 
     ranges0 = [ ranges0[:,s] for s in range(ngroups)]
     ranges1 = [ ranges1[:,s] for s in range(ngroups)]
-    print(ranges0[0])
-    print("-"*30)
+    # print(ranges0[0])
+    # print("-"*30)
     ranges0[refG] = np.array([0])
     ranges1[refG] = np.array([0])
-    print(len(ranges0))
-    for s in range(ngroups): print(s,len(ranges0[s]))
+    # print(len(ranges0))
+    # for s in range(ngroups): print(s,len(ranges0[s]))
 
     smesh0 = np.meshgrid(*ranges0)
     smesh0 = np.stack([g.ravel() for g in smesh0])
     smesh1 = np.meshgrid(*ranges1)
     smesh1 = np.stack([g.ravel() for g in smesh1])
 
-    print("smesh0.shape: ",smesh0.shape)
+    # print("smesh0.shape: ",smesh0.shape)
     smesh = np.stack([smesh0,smesh1],axis=-1)
-    print("smesh.shape: ",smesh.shape)
+    # print("smesh.shape: ",smesh.shape)
     smesh = repeat(smesh,'g l two -> l i h w g two',i=nimages,h=h,w=w)
-    print("smesh.shape: ",smesh.shape)
+    # print("smesh.shape: ",smesh.shape)
     smesh = torch.IntTensor(smesh).to(sranges.device)
-    print("nsearch: ",nsearch)
+    # print("nsearch: ",nsearch)
 
     # -- crop to img_shape --
     if not(img_shape is None):
@@ -265,6 +265,44 @@ def flow_to_groups(flow):
 
     return groups,ngroups
 
+def smooth_locs(locs,nclusters=3):
+
+    nframes,nimages,h,w,k,two = locs.shape
+    locs = locs[...,0,:] # top k only 
+    locs_fmt = rearrange(locs,'t i h w two -> (t i) (h w) two')
+    locs_fmt = locs_fmt.contiguous().type(torch.float)
+
+    # -- exec clustering --
+    names,means,counts,dists = KMeans(locs_fmt, K=nclusters,
+                                      Niter=10, verbose=False, randDist=0.)
+    # -- shaping --
+    means = rearrange(means,'(t i) c two -> t i c two',t=nframes,i=nimages)
+    means = torch.round(means).type(torch.long)
+    olocs = rearrange(torch.zeros_like(locs),'t i h w two -> t i (h w) two')
+    names = rearrange(names,'(t i) hw -> t i hw',t=nframes,i=nimages)
+    print(names[:,0,16*64+16])
+
+    # -- fill in the locs with clusters --    
+    olocs[...,0] = torch.gather(means[:,:,:,0],-1,names,out=olocs[...,0])
+    olocs[...,1] = torch.gather(means[:,:,:,1],-1,names,out=olocs[...,1])
+
+    # -- final shaping --
+    olocs = rearrange(olocs,'t i (h w) two -> t i h w 1 two',h=h)
+
+    return olocs
+
+def clip_loc_boarders(locs,patchsize,l2_nblocks,nblocks):
+    # -- clip boundaries --
+    pad = l2_nblocks//2 + patchsize//2
+    nbHalf = nblocks//2
+    def lclip(boarder):
+        return torch.clamp(boarder,min=-nbHalf,max=nbHalf)
+    locs[:,:,:pad,:,:,:] = lclip(locs[:,:,:pad,:,:,:])
+    locs[:,:,:,:pad,:,:] = lclip(locs[:,:,:,:pad,:,:])
+    locs[:,:,-pad:,:,:,:] = lclip(locs[:,:,-pad:,:,:,:])
+    locs[:,:,:,-pad:,:,:] = lclip(locs[:,:,:,-pad:,:,:])
+    return locs
+
 def cluster_frames_by_groups(wburst,groups,ngroups):
     # print("wburst.shape: ",wburst.shape)
     # print("groups.shape: ",groups.shape)
@@ -279,11 +317,11 @@ def cluster_frames_by_groups(wburst,groups,ngroups):
     gburst = gburst.scatter_add(0,groups,wburst)/counts
     gburst = gburst[:ngroups]
 
-    print("groups: ")
-    print(groups[:,0,0,16,16])
-    print(counts[:,0,0,16,16])
-    print(gburst[:,0,0,16,16])
-    print(wburst[:,0,0,16,16])
+    # print("groups: ")
+    # print(groups[:,0,0,16,16])
+    # print(counts[:,0,0,16,16])
+    # print(gburst[:,0,0,16,16])
+    # print(wburst[:,0,0,16,16])
 
     assert torch.any(torch.isnan(gburst)).item() is False, "[utils] no nan plz."
     del groups
