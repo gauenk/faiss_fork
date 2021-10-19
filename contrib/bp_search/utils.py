@@ -1,11 +1,14 @@
 
 
 import torch
+import torch.nn.functional as F
 import torchvision
 import numpy as np
 from einops import rearrange,repeat
 from nnf_share import getBlockLabelsRaw,loc_index_names,pix2locs,warp_burst_from_pix,warp_burst_from_locs
 from align.xforms import align_from_pix
+from pyutils import save_image
+
 from .th_kmeans import KMeans
 from .meshgrid_per_pixel import meshgrid_per_pixel_launcher
 center_crop = torchvision.transforms.functional.center_crop
@@ -265,29 +268,192 @@ def flow_to_groups(flow):
 
     return groups,ngroups
 
-def smooth_locs(locs,nclusters=3):
+def smooth_locs(locs,nclusters=3,window=16,stride=8):
+    return smooth_locs_global(locs,nclusters=nclusters)
+    # return smooth_locs_patches(locs,window=16,stride=8)
+
+def smooth_locs_patches(locs,window=16,stride=8):
 
     nframes,nimages,h,w,k,two = locs.shape
     locs = locs[...,0,:] # top k only 
+    # save_locs = rearrange(locs,'t i h w two -> (t i) two h w')
+    # save_image("init_locs.png",save_locs.type(torch.float))
+
+    # -- unfold into patched regions --
+    plocs = rearrange(locs,'t i h w two -> (t i) two h w')
+    plocs = plocs.unfold(2,window,stride).unfold(3,window,stride)
+    r1,r2,pH,pW = plocs.shape[-4:]
+    shape_str = '(t i) two r1 r2 pH pW -> (t i r1 r2) (pH pW) two'
+    plocs = rearrange(plocs,shape_str,t=nframes)
+    plocs = plocs.contiguous().type(torch.float)
+
+    # -- exec averaging + expand --
+    plocs_ave = torch.mean(plocs,dim=1)
+    shape_str = '(t i r1 r2) two -> (t i two) (pH pW) (r1 r2)'
+    kwargs = {'t':nframes,'i':nimages,'r1':r1,'r2':r2,'pH':pH,'pW':pW}
+    plocs_ave = repeat(plocs_ave,shape_str,**kwargs)
+
+    # -- fold back into locs --    
+    olocs = F.fold(plocs_ave, output_size=(h,w), kernel_size=window, stride=stride)
+
+    # -- final shaping --
+    olocs = rearrange(olocs,'(t i two) 1 h w -> t i h w 1 two',t=nframes,i=nimages)
+    olocs = olocs.type(torch.long)
+    # print("olocs.shape: ",olocs.shape)
+    # save_locs = rearrange(olocs,'t i h w 1 two -> (t i) two h w')
+    # save_image("smoothed_locs.png",save_locs.type(torch.float))
+
+    return olocs
+
+def smooth_locs_global(locs,nclusters=3):
+
+
+    # -- unpack --
+    nframes,nimages,h,w,k,two = locs.shape
+    locs = locs[...,0,:] # top k only 
+    save_locs = rearrange(locs,'t i h w two -> (t i) two h w')
+    save_image("init_locs.png",save_locs.type(torch.float))
+
+
+    # -- unfold into patched regions --
+    print("locs.shape: ",locs.shape)
     locs_fmt = rearrange(locs,'t i h w two -> (t i) (h w) two')
     locs_fmt = locs_fmt.contiguous().type(torch.float)
 
     # -- exec clustering --
-    names,means,counts,dists = KMeans(locs_fmt, K=nclusters,
-                                      Niter=10, verbose=False, randDist=0.)
-    # -- shaping --
-    means = rearrange(means,'(t i) c two -> t i c two',t=nframes,i=nimages)
-    means = torch.round(means).type(torch.long)
-    olocs = rearrange(torch.zeros_like(locs),'t i h w two -> t i (h w) two')
-    names = rearrange(names,'(t i) hw -> t i hw',t=nframes,i=nimages)
-    print(names[:,0,16*64+16])
+    from skimage import data
+    from skimage.filters import sobel
+    from skimage.segmentation import watershed
+    from scipy import ndimage as ndi
+    from skimage import measure
+    from skimage.morphology import remove_small_objects,remove_small_holes,opening,closing
 
-    # -- fill in the locs with clusters --    
-    olocs[...,0] = torch.gather(means[:,:,:,0],-1,names,out=olocs[...,0])
-    olocs[...,1] = torch.gather(means[:,:,:,1],-1,names,out=olocs[...,1])
+    print("coins.shape: ",data.coins().shape)
 
-    # -- final shaping --
-    olocs = rearrange(olocs,'t i (h w) two -> t i h w 1 two',h=h)
+
+    # locs_img = rearrange(locs,'t i h w two -> (t i) two h w').type(torch.float)
+    # locs_img = rearrange(locs,'t i h w two -> (t i) 1 h w two').type(torch.float)
+    # angle = torch.atan2(locs_img[...,0],locs_img[...,1])
+    # print("angle.shape: ",angle.shape)
+    # save_image("angle.png",angle)
+
+    # -- tokenize locs --
+    locs_uniques = locs.unique()
+    nunique = locs_uniques.shape[0]
+    locs_ids = torch.arange(nunique)
+    locs_img = torch.zeros_like(locs)[...,0]
+    for u in range(nunique):
+        indices = torch.where(locs == locs_uniques[u])
+        locs_img[indices[:-1]] = u
+
+    locs_img_save = rearrange(locs_img,'t i h w -> (t i) 1 h w').type(torch.float)
+    save_image("token_locs.png",locs_img_save)
+    print(locs_img.min(),locs_img.max())
+
+
+    # -- fill holes --
+    locs_img_filled = []
+    for t in range(nframes):
+        in_img = locs_img[t,0].type(torch.long).cpu().numpy()
+        img = remove_small_objects(in_img,16)
+        img = closing(img)
+        img = remove_small_objects(img,16)
+        img = closing(img)
+        # print("mask.shape: ",mask.shape)
+        # print("img.shape: ",img.shape)
+        # img,_ = ndi.label(img,mask)
+        # img = watershed(img,mask)
+        img = torch.LongTensor(img)
+        locs_img_filled.append(img[None,:])
+        locs_img[t] = torch.LongTensor(remove_small_objects(in_img,16,2))
+    # locs_img = rearrange(locs_img,'t i h w -> (t i) 1 h w').type(torch.float)
+    # save_image("smoothed_locs.png",locs_img)
+
+    locs_img = torch.stack(locs_img_filled)
+    locs_img = rearrange(locs_img,'t i h w -> (t i) 1 h w').type(torch.float)
+    save_image("smoothed_locs.png",locs_img)
+
+    # locs_img
+
+    # seg,labels,means = [],[],[]
+    # for t in range(nframes):
+    #     # angle_t = angle[t,0]
+    #     # markers = torch.zeros_like(angle_t)
+    #     # markers[angle_t < 30/255.] = 1
+    #     # markers[angle_t > 150/255.] = 2
+
+    #     # angle_t = angle_t.cpu().numpy()
+    #     # markers = markers.cpu().numpy()
+
+    #     # edges = sobel(angle_t)
+    #     # seg_t = watershed(edges,markers)
+    #     # seg_t = ndi.binary_fill_holes(seg_t - 1)
+    #     # labels_t,_ = ndi.label(seg_t)
+
+    #     # seg_t = torch.FloatTensor(seg_t)
+    #     # labels_t = torch.FloatTensor(labels_t)
+    #     # print(labels_t)
+
+    #     # nlabels =labels_t.max().item()+1
+    #     # print("nlabels: ",nlabels)
+    #     # # means_t[...,0] = locs_fmt[]
+    #     # means_t = torch.zeros_like(locs_fmt)
+
+    #     img = locs_img[t].cpu()
+    #     all_labels = measure.label(img)
+    #     print("all_labels.shape: ",all_labels.shape)
+    #     all_labels = torch.FloatTensor(all_labels)
+    #     seg_t = all_labels
+    #     labels_t = all_labels
+    #     means_t = all_labels
+
+    #     # -- append values --
+    #     seg.append(seg_t)
+    #     labels.append(labels_t)
+    #     means.append(means_t)
+
+
+    # seg = torch.stack(seg)
+    # labels = torch.stack(labels)
+    # seg = rearrange(seg,'ti h w -> ti 1 h w',h=h,w=w)
+    # labels = rearrange(labels,'ti h w -> ti 1 h w',h=h,w=w)
+    # print("seg.shape: ",seg.shape)
+    # print("labels.shape: ",labels.shape)
+    # save_image("seg.png", seg)
+    # save_image("labels.png", labels)
+
+    exit()
+    
+    
+    # names,means,counts,dists = KMeans(locs_fmt, K=nclusters,
+    #                                   Niter=10, verbose=False, randDist=0.)
+
+    # # -- shaping --
+    # shape_str = '(t i) c two -> t i c two'
+    # means = rearrange(means,shape_str,t=nframes,i=nimages)
+    # means = torch.round(means).type(torch.long) 
+   # olocs = rearrange(torch.zeros_like(locs),'t i h w two -> t i (h w) two')
+    # shape_str = '(t i) hw -> t i hw'
+    # names = rearrange(names,shape_str,t=nframes,i=nimages)
+    # print(names[:,0,16*64+16])
+    # save_names = rearrange(names,'t i (h w) -> t i 1 h w',h=h,w=w)
+    # save_image("names.png",save_names.type(torch.float))
+
+    # print("means.shape: ",means.shape)
+    # print("olocs.shape: ",olocs.shape)
+    # print("names.shape: ",names.shape)
+
+    # # -- fill in the locs with clusters --    
+    # olocs[...,0] = torch.gather(means[:,:,:,0],-1,names,out=olocs[...,0])
+    # olocs[...,1] = torch.gather(means[:,:,:,1],-1,names,out=olocs[...,1])
+
+    # # -- final shaping --
+    # olocs = rearrange(olocs,'t i (h w) two -> t i h w 1 two',h=h)
+
+    save_locs = rearrange(olocs,'t i h w 1 two -> (t i) two h w')
+    save_image("smoothed_locs.png",save_locs.type(torch.float))
+    exit()
+
 
     return olocs
 

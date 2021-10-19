@@ -20,6 +20,7 @@ def evalAtLocs(burst, locs, patchsize, nblocks,
         c,h,w = img_shape
     else:
         c,h,w = burst.shape[-3:]
+        img_shape = [c,h,w]
 
     # -- pad locs --
     # print("-"*30)

@@ -75,6 +75,8 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     ishape = [h,w]
     isize = edict({'h':h,'w':w})
     pisize = edict({'h':h+pad,'w':w+pad})
+    l2_pad = 2*(l2_nblocks//2)
+    l2_pisize = edict({'h':h+l2_pad,'w':w+l2_pad})
     pshape = [h+pad,w+pad]
     def ave_denoiser(wnoisy,mask,nframes_per_pix):
         return torch.sum(wnoisy*mask,dim=0) / nframes_per_pix
@@ -103,8 +105,8 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     # locs[6,...,0] = 0
     # locs[6,...,1] = -1
     # locs = torch.zeros_like(locs)
-    locs = smooth_locs(locs,nclusters=5)
-    locs = clip_loc_boarders(locs,patchsize,l2_nblocks,nblocks)
+    locs = smooth_locs(locs,nclusters=3)
+    # locs = clip_loc_boarders(locs,patchsize,l2_nblocks,nblocks)
     l2_locs = locs
     # exit()
 
@@ -114,17 +116,21 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     search_ranges = torch.LongTensor(search_ranges[:,None]).to(device)
 
     # -- 3.) warp burst to top location --
-    wnoisy = padAndTileBatch(noisy,patchsize,nblocks)
-    wclean = padAndTileBatch(clean,patchsize,nblocks)
+    wnoisy = padAndTileBatch(noisy,patchsize,l2_nblocks)
+    wclean = padAndTileBatch(clean,patchsize,l2_nblocks)
     pixPad = (wnoisy.shape[-1] - noisy.shape[-1])//2
     ppix = padLocs(pix+pixPad,pixPad)
     plocs = padLocs(locs,pixPad)
+    print(wnoisy.shape)
+    print(noisy.shape)
+    print(plocs.shape)
 
     print("pre warp!")
-    warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,pisize)
-    warped_clean = warp_burst_from_locs(wclean,plocs,1,pisize)
+    warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,l2_pisize)
+    warped_clean = warp_burst_from_locs(wclean,plocs,1,l2_pisize)
     img_shape[0] = wnoisy.shape[-3]
     print("post warp!")
+    print(warped_noisy.shape)
     
     hP,wP = h + 2*pixPad,w + 2*pixPad
     pad_search_ranges = create_search_ranges(nblocks,hP,wP,nframes)
@@ -142,8 +148,11 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     sub_locs_rs = l2_locs
     psHalf = patchsize//2
     print("pre eval.")
+    print(wnoisy.shape)
+    print(sub_locs_rs.shape)
+    print(img_shape)
     vals,e_locs = evalAtLocs(wnoisy,sub_locs_rs, 1,
-                             nblocks,img_shape=img_shape)
+                             l2_nblocks,img_shape=img_shape)
     print("post eval.")
 
     # -------------------------------
@@ -152,11 +161,19 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     #
     # -------------------------------
 
-    sub_locs_rs_pad = padLocs(sub_locs_rs,psHalf,mode='extend')
+
+    # -- crop warped frame as init location --
+    warped_noisy = center_crop(warped_noisy,pshape)
+    wnoisy = warped_noisy[0].clone()
+    locs = torch.zeros_like(locs)
+
+    # -- params --
     psHalf = patchsize//2
     nbHalf = nblocks//2
     padSize = psHalf
+    pixPad = (wnoisy.shape[-1] - img_shape[-1])//2
 
+    # -- loops stuff --
     clK = [3,]*niters#niters # -- scheduler for clustering --
     # search_blocks = compute_search_blocks(search_ranges,3) # -- matches clK --
     # K = nframes
@@ -170,7 +187,7 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     # print(locs[:,0,16,16,0])
 
     exp_locs = locs
-    clK = [ngroups,]
+    clK = [5,]
     niters = len(clK)
     for i in range(niters):
 
@@ -253,6 +270,11 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
 
         print("pre warped.")
         plocs = padLocs(locs,pixPad)
+        print("wnoisy.shape: ",wnoisy.shape)
+        print("plocs.shape: ",plocs.shape)
+        print("locs.shape: ",locs.shape)
+        print("pixPad: ",pixPad)
+        print(pisize)
         warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,pisize)
         print("post warped.")
 
@@ -336,6 +358,9 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     warped_noisy = index_along_ftrs(warped_noisy,patchsize,c)
     warped_clean = index_along_ftrs(warped_clean,patchsize,c)
     
+    # -- add back the l2_locs --
+    locs += l2_locs
+
     if to_flow:
         locs = locs2flow(locs)
 
