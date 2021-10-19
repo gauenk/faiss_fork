@@ -89,7 +89,7 @@ def _runKmBurstSearch(res, burst , patchsize, nblocks,
                                        device,is_tensor,nframes)
     
     # -- setup args --
-    args = faiss.GpuKmBurstDistanceParams()
+    args = faiss.GpuKmBurstParams()
     args.metric = faiss.METRIC_L2
     args.k = k
     args.h = h

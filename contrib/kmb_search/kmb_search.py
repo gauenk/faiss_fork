@@ -74,3 +74,52 @@ def runKmBurst(burst,patchsize,nblocks,k=1,std=None,
     vals,locs = choose_trajectory(agg_vals,agg_locs)
 
     return vals,locs
+
+
+"""
+
+
+-> Trajectory or _Search Ranges_ or Meshgrid?
+-> Meshgrid:
+   -> we can't do a meshgrid since we don't know the clusters in advance.
+   -> any meshgrid using all the frames is too big
+   -> this is out.
+-> Trajectories:
+   -> only requies a pair of numbers per HxWxT
+   -> uses implicit search range
+-> Search Ranges
+   -> allows for trajectories to be used
+   -> allows for not just local searches to be used
+
+
+--------------
+--> Steps: <--
+--------------
+
+   1.) batch across (a) H, (b) W, and (c) Blocks
+      -> what does it mean to get a batch of "blocks" if the blocks are not 
+         already meshed together?
+      -> it seems like we need to know the "number" of blocks and then we
+         can somehow create the correct blocks for the given (start,end) integers?
+      batched_search_mesh = function(search_ranges,start,end,...)
+
+   2.) compute the clusters for the given proposed alignments
+      -> for each proposed search, we compute need the 
+         (i) centroid frames 
+         (ii) [NOT NEEDED] --cluster--assignments--; no use in this case
+
+   3.) we compute the final quality: \ave_i((c_i - c_bar)) 
+
+   4.) add to topK
+
+
+-> WAIT: the optimal should only have 1 cluster with all the frames...
+-> However, our measure of goodness is an inter-cluster distance measure
+-> So we by computing the "centroid" to the "global centroid mean", we
+   create a "hedged" estimate of the final result.
+-> Think if K = T, then we reduce the sample variance
+-> Think if K = 1, then we reduce to 0 identity
+-> So if 1 < K < T, then we balance between finding multiple modes? and the single mode?
+
+
+"""
