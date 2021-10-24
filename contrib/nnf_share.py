@@ -186,12 +186,16 @@ def torch2swig(tensor):
         raise KeyError("Uknown tensor dtype.")
     return tensor_ptr,tensor_dtype
 
-def get_swig_ptr(th_or_np):
+def get_swig_ptr(th_or_np,rtype=False):
     if torch.is_tensor(th_or_np):
-        array_ptr,_ = torch2swig(th_or_np)
+        array_ptr,array_type = torch2swig(th_or_np)
     else:
         array_ptr = faiss.swig_ptr(th_or_np)
-    return array_ptr
+        array_type = None
+    if rtype:
+        return array_ptr,array_type
+    else:
+        return array_ptr
 
 #---------------------------------
 #    

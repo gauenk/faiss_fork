@@ -51,15 +51,18 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
                              blockLabels=None, ref=None,
                              to_flow=False, fmt=False, gt_info=None):
 
+    nframes,nimages,c,h,w = noisy.shape
     if l2_nblocks is None: l2_nblocks = nblocks
     assert nparticles == 1, "Only one particle currently supported."
     ngroups = -1
     if not(gt_info is None):
         flow = gt_info['flow']
         groups,ngroups = flow_to_groups(flow)
-        groups = groups.to(noisy.device,non_blocking=True)
+        groups = groups.to(noisy.device,non_blocking=True) # (t i h w)
         locs_gt = flow2locs(flow)
         locs_gt = rearrange(locs_gt,'i t h w two -> 1 i h w t two')
+    else:
+        groups = torch.zeros((nframes,nimages,h,w)).type(torch.long)
     print("ngroups: ",ngroups)
 
     # -------------------------------
@@ -69,7 +72,6 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     # -------------------------------
 
     device = noisy.device
-    nframes,nimages,c,h,w = noisy.shape
     img_shape = [c,h,w]
     pad = 2*(nblocks//2)
     ishape = [h,w]
@@ -105,7 +107,7 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     # locs[6,...,0] = 0
     # locs[6,...,1] = -1
     # locs = torch.zeros_like(locs)
-    locs = smooth_locs(locs,nclusters=3)
+    # locs = smooth_locs(locs,nclusters=3)
     # locs = clip_loc_boarders(locs,patchsize,l2_nblocks,nblocks)
     l2_locs = locs
     # exit()
@@ -177,8 +179,9 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     clK = [3,]*niters#niters # -- scheduler for clustering --
     # search_blocks = compute_search_blocks(search_ranges,3) # -- matches clK --
     # K = nframes
-    modes = compute_mode(std,patchsize**2,groups)
-    mode = torch.mean(modes*ngroups).item()
+    # modes = compute_mode(std,patchsize**2,groups)
+    # mode = torch.mean(modes*ngroups).item()
+    mode = 0.
     refGroup = groups[nframes//2,0,16,16].item()
     mask = torch.ones_like(groups).type(torch.bool).contiguous()
     groups_known = True

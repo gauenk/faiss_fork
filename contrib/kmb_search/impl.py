@@ -5,9 +5,23 @@ for KMeans+Burst Search
 
 """
 
-def runKmBurstSearch(burst, patchsize, nblocks, k=1,
-                     kmeansK = 3, std = None, traj=None,
-                     img_shape=None, fmt=False):
+
+# -- python --
+from einops import rearrange,repeat
+
+# -- pytorch --
+import torch
+import torchvision.transforms.functional as tvF
+
+# -- faiss --
+import faiss
+from nnf_share import padBurst,get_optional_device,getImage,getVals,getLocs,get_swig_ptr
+from torch_utils import using_stream
+from .utils import jitter_search_ranges
+
+def runKmBurstSearch(burst, patchsize, nsearch, k=1, kmeansK = 3,
+                     std = None, ref = None, search_ranges=None,
+                     img_shape=None, to_flow=False, fmt=False):
     
     # -- create faiss GPU resource --
     res = faiss.StandardGpuResources()
@@ -23,18 +37,18 @@ def runKmBurstSearch(burst, patchsize, nblocks, k=1,
     vals,locs = [],[]
     for i in range(nimages):
 
-        # -- create padded burst --
-        burstPad_i = padBurst(burst[:,i],img_shape,patchsize,nblocks)
+        # -- get batch's burst --
+        burst_i = burst[:,i]
 
-        # -- assign input vals and locs --
-        traj_i = traj
-        if not(traj is None): traj_i = traj[i]
+        # -- get search ranges for image if exists --
+        search_ranges_i = search_ranges
+        if not(search_ranges is None): search_ranges_i = search_ranges[i]
 
         # -- execute over search space! --
-        vals_i,locs_i = _runKmBurstSearch(res, burstPad_i, patchsize, nblocks,
+        vals_i,locs_i = _runKmBurstSearch(res, burst_i, patchsize, nsearch,
                                           k = k, kmeansK = kmeansK,
-                                          img_shape = img_shape, 
-                                          std = std, ref = ref, traj=traj_i)
+                                          std = std, ref = ref,
+                                          search_ranges=search_ranges_i)
 
         vals.append(vals_i)
         locs.append(locs_i)
@@ -54,9 +68,9 @@ def runKmBurstSearch(burst, patchsize, nblocks, k=1,
 
     return vals,locs
 
-def _runKmBurstSearch(res, burst , patchsize, nblocks,
-                      k = 1, kmeansK = 3, img_shape = None,
-                      std = None, ref = None, traj=None):
+def _runKmBurstSearch(res, burst , patchsize, nsearch,
+                      k = 1, kmeansK = 3, std = None, ref = None,
+                      search_ranges=None):
     
     
 
@@ -67,13 +81,11 @@ def _runKmBurstSearch(res, burst , patchsize, nblocks,
     # ----------------------
 
     nframes,c,h,w = burst.shape
-    if img_shape is None: img_shape = [c,h,w]
     if ref is None: ref = nframes//2
-    if traj is None: traj = compute_zero_traj(nblocks)
     if std is None: raise ValueError("Uknown std -- must be a float.")
-    c, h, w = img_shape
     is_tensor = torch.is_tensor(burst)
     device = get_optional_device(burst)
+    psHalf = patchsize//2
 
     # ----------------------
     #
@@ -81,14 +93,42 @@ def _runKmBurstSearch(res, burst , patchsize, nblocks,
     #
     # ----------------------
 
-    burstPad = padBurst(burst,img_shape,patchsize,nblocks)
-    burst_ptr,burst_type = getImage(burstPad)
-    vals,vals_ptr = getVals(vals,h,w,k,device,is_tensor,None)
-    locs,locs_ptr,locs_type = getLocs(locs,h,w,k,device,is_tensor,nframes)
-    bl,blockLabels_ptr = getBlockLabels(blockLabels,nblocks,locs.dtype,
-                                       device,is_tensor,nframes)
+    # -- burst --
+    burstPad = tvF.pad(burst,(psHalf,)*4,padding_mode="reflect")
+    burstPad = rearrange(burstPad,'t c h w -> c t h w')
+    burstPad = burstPad.contiguous()
+    burst_ptr,burst_type = get_swig_ptr(burstPad,rtype=True)
+
+    # -- init blocks --
+    init_blocks = torch.zeros((nframes,h,w)).type(torch.int).to(device).contiguous()
+    init_blocks_ptr = get_swig_ptr(init_blocks)
+
+    # -- search --
+    if search_ranges is None:
+        print("Creating jitter search ranges.")
+        search_ranges = jitter_search_ranges(3,nframes,h,w)
+    sranges_ptr = get_swig_ptr(search_ranges.to(device))
+    print("search_ranges.")
+    print(search_ranges.shape)
+
+
+    # -- vals --
+    vals = torch.zeros((k,h,w)).to(device)
+    vals_ptr = get_swig_ptr(vals)
+
+    # -- locs --
+    locs = torch.zeros((2,nframes,k,h,w)).to(device).type(torch.int)
+    locs_ptr,locs_type = get_swig_ptr(locs,rtype=True)
+    print("burstPad.shape: ",burstPad.shape)
     
-    # -- setup args --
+
+    # ----------------------
+    #
+    #   setup C++ interface
+    #
+    # ----------------------
+    print("nsearch: ",nsearch)
+
     args = faiss.GpuKmBurstParams()
     args.metric = faiss.METRIC_L2
     args.k = k
@@ -97,24 +137,37 @@ def _runKmBurstSearch(res, burst , patchsize, nblocks,
     args.c = c
     args.t = nframes
     args.ps = patchsize
-    args.nblocks = nblocks
-    args.nblocks_total = bl.shape[1]
+    args.nsearch = nsearch
     args.kmeansK = kmeansK
     args.std = std # noise level
     args.burst = burst_ptr
     args.dtype = burst_type
-    args.traj = traj_ptr
+    args.init_blocks = init_blocks_ptr
+    args.search_ranges = sranges_ptr
     args.outDistances = vals_ptr
     args.outIndices = locs_ptr
     args.outIndicesType = locs_type
     args.ignoreOutDistances = True
 
-    # -- choose to block with or without stream --
+    # ----------------------
+    #
+    #   Choosing Stream
+    #
+    # ----------------------
+    
     if is_tensor:
         with using_stream(res):
             faiss.bfKmBurst(res, args)
     else:
         faiss.bfKmBurst(res, args)
+
+    # ---------------------
+    #
+    #   Reshape for Output
+    #
+    # ---------------------
+
+    locs = rearrange(locs,'two t k h w -> k t h w two')
 
     return vals, locs
 
