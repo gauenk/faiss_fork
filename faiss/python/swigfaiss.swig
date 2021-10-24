@@ -291,6 +291,7 @@ void gpu_sync_all_devices();
 #include <faiss/gpu/GpuNnfDistance.h>
 #include <faiss/gpu/GpuBurstNnfDistance.h>
 #include <faiss/gpu/GpuSubBurstNnfDistance.h>
+#include <faiss/gpu/GpuKmBurst.h>
 
 
 int get_num_gpus()
@@ -499,6 +500,7 @@ void gpu_sync_all_devices()
 %include  <faiss/gpu/GpuNnfDistance.h>
 %include  <faiss/gpu/GpuBurstNnfDistance.h>
 %include  <faiss/gpu/GpuSubBurstNnfDistance.h>
+%include  <faiss/gpu/GpuKmBurst.h>
 
 #endif
 
