@@ -12,6 +12,7 @@ set(FAISS_GPU_SRC
   GpuNnfDistance.cu
   GpuSubBurstNnfDistance.cu
   GpuBurstNnfDistance.cu
+  GpuKmBurst.cu
   GpuIndex.cu
   GpuIndexBinaryFlat.cu
   GpuIndexFlat.cu
@@ -27,9 +28,15 @@ set(FAISS_GPU_SRC
   impl/BroadcastSumBurst.cu
   impl/BroadcastSumSubBurst.cu
   impl/Distance.cu
+  impl/KmBurstDistance.cu
+  impl/KMeans.cu
+  impl/KmClusterUpdate.cu
+  impl/KmCentroidUpdate.cu
+  impl/PairwiseDistances.cu
   impl/SubBurstPatchDistance.cu
   impl/BurstPatchDistance.cu
   impl/ImagePatchDistance.cu
+  impl/MeshSearchSpace.cu
   impl/FlatIndex.cu
   impl/IVFAppend.cu
   impl/IVFBase.cu
@@ -110,6 +117,7 @@ set(FAISS_GPU_HEADERS
   GpuNnfDistance.h
   GpuSubBurstNnfDistance.h
   GpuBurstNnfDistance.h
+  GpuKmBurst.h
   GpuDistanceDataType.h
   GpuFaissAssert.h
   GpuIndex.h
@@ -128,9 +136,16 @@ set(FAISS_GPU_HEADERS
   impl/BroadcastSumBurst.cuh
   impl/BroadcastSumSubBurst.cuh
   impl/Distance.cuh
+  impl/KmBurstDistance.cuh
+  impl/KMeans.cuh
+  impl/KmClusterUpdate.cuh
+  impl/KmCentroidUpdate.cuh
+  impl/PairwiseDistances.cuh
   impl/SubBurstPatchDistance.cuh
   impl/BurstPatchDistance.cuh
   impl/ImagePatchDistance.cuh
+  impl/MeshSearchSpace.cuh
+  impl/KmUtils.cuh
   impl/DistanceUtils.cuh
   impl/FlatIndex.cuh
   impl/GeneralDistance.cuh
