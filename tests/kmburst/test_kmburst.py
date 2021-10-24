@@ -35,7 +35,8 @@ from nnf_share import padAndTileBatch,padBurst,tileBurst,pix2locs
 from kmb_search import runKmSearch
 
 # -- local imports --
-from .utils import compute_gt_burst,set_seed
+sys.path.append("/home/gauenk/Documents/faiss/tests/")
+from kmburst.utils import compute_gt_burst,set_seed
 
 def exp_setup():
     # seed = 234
@@ -63,7 +64,7 @@ def exp_setup():
     nblocks = 3
     k = 3#(nblocks**2)**2
     gpuid = 0
-    return seed,patchsize,nblocks,k,gpuid
+    return seed,h,w,c,patchsize,nblocks,k,gpuid
 
 def test_burst_nnf_sample():
 
@@ -72,7 +73,7 @@ def test_burst_nnf_sample():
     #        EXP SETTINGS 
     #
     # ---------------------------
-    seed,patchsize,nblocks,k,gpuid = exp_setup()
+    seed,h,w,c,patchsize,nblocks,k,gpuid = exp_setup()
 
     # -- derived variables --
     ps = patchsize
@@ -111,7 +112,8 @@ def test_burst_nnf_sample():
     device = burst.device
 
     # -- format data --
-    noise = np.random.normal(loc=0,scale=0.19,size=(t,1,c,h,w)).astype(np.float32)
+    std = 20
+    noise = np.random.normal(loc=0,scale=std/255.,size=(t,1,c,h,w)).astype(np.float32)
     burst += torch.FloatTensor(noise).to(device)
     block = np.c_[-flow[:,1],flow[:,0]] # (dx,dy) -> (dy,dx) with "y" [0,M] -> [M,0]
     save_image("burst.png",burst)
@@ -166,29 +168,30 @@ def test_burst_nnf_sample():
     # ------------------------------------------
 
     print("-"*30)
-    print("Sub Burst")
+    print("KMeans Burst")
     print("-"*30)
     gt_dist = 0.
-    valMean = gt_dist
     start_time = time.perf_counter()
-    _vals,_locs = kmb_utils.runKmBurst(burst, patchsize,
-                                       nblocks, k = k,
-                                       std = std,
-                                       search_space=None,
-                                       ref=None)
+    _vals,_locs = runKmSearch(burst, patchsize,nblocks, k = k,
+                              std = std,search_space=None, ref=None)
     runtimes.KmBurst = time.perf_counter() - start_time
-    vals.KmBurst = _vals[0][None,:] # include nframes 
-    locs.KmBurst = _locs[:,0]
+    print("_vals.shape: ",_vals.shape)
+    print("_locs.shape: ",_locs.shape)
+    # vals.shape: (i,k,h,w)
+    # locs.shape: (i,k,t,h,w,2)
+    vals.KmBurst = _vals[0,0]
+    locs.KmBurst = _locs[0,0]
     # locs.KmBurst = _locs[0]
+    print(locs.KmBurst.shape)
     print(_locs.shape)
     print("[locs.KmBurst] @ (0,0): \n",locs.KmBurst[:,0,0,0])
     print("[locs.KmBurst] @ (0,1): \n",locs.KmBurst[:,0,1,0])
     print("[locs.KmBurst] @ (16,16): \n",locs.KmBurst[:,16,16,0])
 
     print("vals.shape ",vals.KmBurst.shape)
-    print("[vals.KmBurst] @ (0,0): \n",vals.KmBurst[:,0,0,0])
-    print("[vals.KmBurst] @ (0,1): \n",vals.KmBurst[:,0,1,0])
-    print("[vals.KmBurst] @ (16,16): \n",vals.KmBurst[:,16,16,0])
+    print("[vals.KmBurst] @ (0,0): \n",vals.KmBurst[0,0].item())
+    print("[vals.KmBurst] @ (0,1): \n",vals.KmBurst[0,1].item())
+    print("[vals.KmBurst] @ (16,16): \n",vals.KmBurst[16,16].item())
 
     print("-"*30)
 
@@ -209,9 +212,10 @@ def test_burst_nnf_sample():
     img_shape[0] = wburst.shape[-3]
     print("wburst.shape ",wburst.shape)
     start_time = time.perf_counter()
-    _vals,_locs = runBpSearch(burst, patchsize, nblocks,
-                              k=k, valMean = valMean,
-                              blockLabels=None)
+    _vals,_locs,_ = runBpSearch(burst, burst, patchsize, nblocks,
+                                k=k, valMean = valMean,
+                                blockLabels=None,
+                                search_type="cluster_approx")
     # _vals,_locs = sbnnf_utils.runBurstNnf(wburst, 1, nblocks,
     #                                       k=3, valMean = valMean,
     #                                       blockLabels=None,
@@ -221,7 +225,7 @@ def test_burst_nnf_sample():
     #                                       blockLabels=None,
     #                                       img_shape=None)
     runtimes.BpSearch = time.perf_counter() - start_time
-    vals.BpSearch = _vals[0][None,:]
+    vals.BpSearch = _vals[0]
     locs.BpSearch = _locs[:,0]
     # locs.BpSearch = _locs[0]
 
@@ -291,7 +295,7 @@ def test_burst_nnf_sample():
                                          to_flow=False,
                                          tile_burst=False)
     runtimes.Burst = time.perf_counter() - start_time
-    vals.Burst = _vals[0][None,:] # include nframes 
+    vals.Burst = _vals[0]
     locs.Burst = _locs[:,0]
 
     # -----------------------------------
@@ -325,7 +329,7 @@ def test_burst_nnf_sample():
         for j in range(interior_pad,w-interior_pad):
             for key1 in vals:
                 if key1 == "L2Local": continue
-                v_key1 = vals[key1][:,i,j,0]
+                v_key1 = vals[key1][i,j]
                 l_key1 = locs[key1][:,i,j,0]
                 for key2 in vals:
                     if key2 == "L2Local": continue
@@ -347,10 +351,10 @@ def test_burst_nnf_sample():
     for pix_hw in pix_hw_list:
         print(pix_hw)
         gt_dist = compute_gt_burst(burstPad,pix_hw,block,ps,nblocks)
-        print("Our-L2-Local Output: ",vals.L2Local[:,pix_hw[0],pix_hw[1],:])
-        print("Burst-L2-Local Output: ",vals.Burst[:,pix_hw[0],pix_hw[1],:])
-        print("KmBurst-L2-Local Output: ",vals.KmBurst[:,pix_hw[0],pix_hw[1],:])
-        print("BpSearch Output: ",vals.BpSearch[:,pix_hw[0],pix_hw[1],:])
+        print("Our-L2-Local Output: ",vals.L2Local[pix_hw[0],pix_hw[1]].item())
+        print("Burst-L2-Local Output: ",vals.Burst[pix_hw[0],pix_hw[1]].item())
+        print("KmBurst-L2-Local Output: ",vals.KmBurst[pix_hw[0],pix_hw[1]].item())
+        print("BpSearch Output: ",vals.BpSearch[pix_hw[0],pix_hw[1]].item())
         print("GT Output: ",gt_dist)
 
     
@@ -379,8 +383,8 @@ def test_burst_nnf_sample():
 
     pix_hw = [h//2,w//2]
     # pix_hw = [h//2,w//2]
-    vBurst = vals.Burst[:,pix_hw[0],pix_hw[1],:].cpu().numpy()[0]
-    vKmBurst = vals.KmBurst[:,pix_hw[0],pix_hw[1],:].cpu().numpy()[0]
+    vBurst = vals.Burst[pix_hw[0],pix_hw[1]].item()
+    vKmBurst = vals.KmBurst[pix_hw[0],pix_hw[1]].item()
     iBurstValid = np.where(vBurst < 1e10)
     iKmBurstValid = np.where(vKmBurst < 1e10)
     assert np.all(iBurstValid[0] == iKmBurstValid[0]),"Equal OOB"
@@ -397,28 +401,28 @@ def test_burst_nnf_sample():
     # print(blockLabels[:,blockIndicesNeq])
     # print(blockLabels[:,-5:])
 
-    # print(vals.Burst[:,pix_hw[0],pix_hw[1],:])
-    # print(locs.Burst[:,pix_hw[0],pix_hw[1],0])
+    # print(vals.Burst[pix_hw[0],pix_hw[1]])
+    # print(locs.Burst[pix_hw[0],pix_hw[1]])
     bp_top1_loc = locs.BpSearch[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
     loc_top1 = locs.Burst[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
     print("-"*20)
-    # print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]-1,:])
-    # print(vals.Burst[:,pix_hw[0]-1,pix_hw[1]+1,:])
-    # print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]-1,:])
-    # print(vals.Burst[:,pix_hw[0]+1,pix_hw[1]+1,:])
+    # print(vals.Burst[pix_hw[0]-1,pix_hw[1]-1])
+    # print(vals.Burst[pix_hw[0]-1,pix_hw[1]+1])
+    # print(vals.Burst[pix_hw[0]+1,pix_hw[1]-1])
+    # print(vals.Burst[pix_hw[0]+1,pix_hw[1]+1])
     print("-"*20)
 
     output = []
-    output.append(vals.Burst[:,pix_hw[0],pix_hw[1],:].cpu().numpy())
-    # output.append(vals.Burst[:,pix_hw[0]-1,pix_hw[1]-1,:].cpu().numpy())
-    # output.append(vals.Burst[:,pix_hw[0]-1,pix_hw[1]+1,:].cpu().numpy())
-    # output.append(vals.Burst[:,pix_hw[0]+1,pix_hw[1]-1,:].cpu().numpy())
-    # output.append(vals.Burst[:,pix_hw[0]+1,pix_hw[1]+1,:].cpu().numpy())
+    output.append(vals.Burst[pix_hw[0],pix_hw[1]].cpu().numpy())
+    # output.append(vals.Burst[pix_hw[0]-1,pix_hw[1]-1].cpu().numpy())
+    # output.append(vals.Burst[pix_hw[0]-1,pix_hw[1]+1].cpu().numpy())
+    # output.append(vals.Burst[pix_hw[0]+1,pix_hw[1]-1].cpu().numpy())
+    # output.append(vals.Burst[pix_hw[0]+1,pix_hw[1]+1].cpu().numpy())
     output = np.array(output)[:,0]
 
     print(flow.shape,block.shape)
     gt_dist = compute_gt_burst(burstPad,pix_hw,block,ps,nblocks)
-    top1_val = vals.Burst[0,pix_hw[0],pix_hw[1],0].item()
+    top1_val = vals.Burst[pix_hw[0],pix_hw[1]].item()
     top1_loc = locs.Burst[:,pix_hw[0],pix_hw[1],0].cpu().numpy()
     print("Burst Output @ Top1: ",top1_val)
     print("GT-Burst Output @ GT Flow: ",gt_dist)
