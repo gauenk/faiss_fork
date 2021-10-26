@@ -274,6 +274,7 @@ void gpu_sync_all_devices();
 
 %{
 
+#include <faiss/gpu/TestResources.h>
 #include <faiss/gpu/StandardGpuResources.h>
 #include <faiss/gpu/GpuIndicesOptions.h>
 #include <faiss/gpu/GpuClonerOptions.h>
@@ -292,6 +293,7 @@ void gpu_sync_all_devices();
 #include <faiss/gpu/GpuBurstNnfDistance.h>
 #include <faiss/gpu/GpuSubBurstNnfDistance.h>
 #include <faiss/gpu/GpuKmBurst.h>
+#include <faiss/gpu/GpuKmBurstPyTests.h>
 
 
 int get_num_gpus()
@@ -325,6 +327,7 @@ void gpu_sync_all_devices()
 %ignore faiss::gpu::GpuMemoryReservation;
 %ignore faiss::gpu::GpuMemoryReservation::operator=(GpuMemoryReservation&&);
 
+%include  <faiss/gpu/TestResources.h>
 %include  <faiss/gpu/GpuResources.h>
 %include  <faiss/gpu/StandardGpuResources.h>
 
@@ -501,6 +504,7 @@ void gpu_sync_all_devices()
 %include  <faiss/gpu/GpuBurstNnfDistance.h>
 %include  <faiss/gpu/GpuSubBurstNnfDistance.h>
 %include  <faiss/gpu/GpuKmBurst.h>
+%include  <faiss/gpu/GpuKmBurstPyTests.h>
 
 #endif
 

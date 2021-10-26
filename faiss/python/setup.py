@@ -59,7 +59,7 @@ setup(
     keywords='search nearest neighbors',
 
     install_requires=['numpy'],
-    packages=['faiss'],#, 'faiss.contrib'],
+    packages=['faiss', 'faiss.contrib'],
     package_data={
         'faiss': ['*.so', '*.pyd'],
     },

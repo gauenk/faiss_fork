@@ -127,13 +127,15 @@ namespace gpu {
       <<<grid, block, 0, stream>>>(search_ranges, blocks,
     				   curr_blocks, search_frames, 
     				   iter, normLoop);
-    
+    CUDA_TEST_ERROR();
+
+
     // write to file for testing
-    cudaDeviceSynchronize();
-    const char sranges_fn[50] = "search_ranges.txt";
-    write_to_file(search_ranges,sranges_fn);
-    const char block_fn[50] = "blocks.txt";
-    write_to_file(blocks,block_fn);
+    // cudaDeviceSynchronize();
+    // const char sranges_fn[50] = "search_ranges.txt";
+    // write_to_file(search_ranges,sranges_fn);
+    // const char block_fn[50] = "blocks.txt";
+    // write_to_file(blocks,block_fn);
     
   }
 

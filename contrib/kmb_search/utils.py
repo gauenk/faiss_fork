@@ -1,7 +1,41 @@
 
+# -- python --
 import torch
 from einops import rearrange,repeat
 
+# -- faiss --
+import sys
+sys.path.append("/home/gauenk/Documents/faiss/contrib/")
+from bp_search import create_mesh_from_ranges
+from warp_utils import warp_burst_from_locs
+
+def tiled_search_frames(nfsearch,nsiters,ref):
+    sframes = torch.zeros(nsiters,nfsearch)
+    base = torch.arange(nfsearch).type(torch.int)
+    for i in range(nsiters):
+        sframes[i,:] = base + i
+        if len(torch.where(ref == sframes[i,:])[0]) == 0:
+               sframes[i,0] = ref
+    return sframes
+
+def mesh_from_ranges(search_ranges,search_frames,curr_blocks,ref):
+    # -- create mesh of current blocks --
+    search_frames = search_frames.type(torch.long) # for torch indexing
+    two,t,s,h,w = search_ranges.shape
+    sranges = rearrange(search_ranges,'two t s h w -> s 1 h w t two')
+    sranges = sranges[...,search_frames,:]
+    ref = torch.where(search_frames == ref)[0][0].item()
+    mesh = create_mesh_from_ranges(sranges,ref)
+    mesh = rearrange(mesh,'b 1 h w g two -> two g b h w')
+
+    # -- append the current state frames --
+    nblocks = mesh.shape[-3]
+    blocks = curr_blocks.clone()
+    blocks = repeat(blocks,'two t h w -> two t b h w',b=nblocks)
+    for group,frame in enumerate(search_frames):
+        blocks[:,frame] = mesh[:,group]
+    
+    return blocks
 
 def jitter_search_ranges(nrange,t,h,w):
 
@@ -42,3 +76,16 @@ def compute_l2_mode(std,patchsize):
     return 0.
 
 
+def compute_pairwise_distance(burst,blocks,ps):
+    c,t,h,w = burst.shape
+    two,t,s,h,w = blocks.shape
+    dists = torch.zeros(t,t,s,h,w).to(burst.device)
+    wbursts = warp_burst_from_locs(burst,blocks,isize=None)
+    print("wbursts.shape: ",wbursts.shape)
+    for si in range(s):
+        wburst = wbursts[si]
+        for t0 in range(t):
+            for t1 in range(t):
+                delta = torch.sum(torch.abs(wburst[:,t0]-wburst[:,t1]),dim=0)
+                dists[t0,t1,si] = delta
+    return dists

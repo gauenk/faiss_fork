@@ -21,11 +21,11 @@ namespace faiss {
 					      Tensor<int, 5, true, int> blocks,
 					      Tensor<T, 5, true, int> centroids,
 					      Tensor<int, 4, true, int> clusters,
-					      int patchsize){
+					      int patchsize, float offset){
       // compute pairwise distances across time.
       
+      
     }
-
 
 
     template <typename T>
@@ -34,7 +34,8 @@ namespace faiss {
 			    Tensor<int, 5, true, int>& blocks,
 			    Tensor<T, 5, true, int>& centroids,
 			    Tensor<int, 4, true, int>& clusters,
-			    int patchsize, cudaStream_t stream){
+			    int patchsize, float offset,
+			    cudaStream_t stream){
 
 
       // threads 
@@ -48,9 +49,9 @@ namespace faiss {
       // launch
       auto grid = dim3(numGrids);
       auto block = dim3(numThreads);
-      pairwise_distances_kernel<T><<<grid,block,0,stream>>>(dists,burst,
-							    blocks,centroids,
-							    clusters,patchsize);
+      pairwise_distances_kernel<T><<<grid,block,0,stream>>>(dists,burst,blocks,
+							    centroids,clusters,
+							    patchsize,offset);
 							    
     }
 
@@ -66,9 +67,10 @@ namespace faiss {
 			    Tensor<int, 5, true, int>& blocks,
 			    Tensor<float, 5, true, int>& centroids,
 			    Tensor<int, 4, true, int>& clusters,
-			    int patchsize, cudaStream_t stream){
+			    int patchsize, float offset,
+			    cudaStream_t stream){
       pairwise_distances<float>(dists,burst,blocks,centroids,clusters,
-			 patchsize, stream);
+				patchsize, offset, stream);
     }
 
     void pairwise_distances(Tensor<half, 5, true, int>& dists,
@@ -76,9 +78,10 @@ namespace faiss {
 			    Tensor<int, 5, true, int>& blocks,
 			    Tensor<half, 5, true, int>& centroids,
 			    Tensor<int, 4, true, int>& clusters,
-			    int patchsize, cudaStream_t stream){
+			    int patchsize, float offset,
+			    cudaStream_t stream){
       pairwise_distances<half>(dists,burst,blocks,centroids,clusters,
-			 patchsize, stream);
+			       patchsize, offset, stream);
     }
 
 

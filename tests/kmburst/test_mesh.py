@@ -34,10 +34,8 @@ import sub_burst as sbnnf_utils
 from bp_search import runBpSearch,create_mesh_from_ranges
 from nnf_share import padAndTileBatch,padBurst,tileBurst,pix2locs
 from kmb_search import runKmSearch,init_zero_locs,init_zero_traj,jitter_traj_ranges
+from kmb_search.testing.utils import compute_gt_burst,set_seed
 
-# -- local imports --
-sys.path.append("/home/gauenk/Documents/faiss/tests/")
-from kmburst.utils import compute_gt_burst,set_seed
 
 def exp_setup():
     # seed = 234
@@ -272,6 +270,7 @@ def check_mesh(sizes):
     nframes,nimages,h,w = sizes 
     traj = init_zero_traj(nframes,nimages,h,w)
     sranges = jitter_traj_ranges(traj,3)
+    print("search_ranges.shape: ",sranges.shape)
 
     # -- create ground-truth mesh --
     ref = nframes//2
@@ -281,12 +280,12 @@ def check_mesh(sizes):
     mesh_gt = rearrange(mesh_gt,'s i h w t two -> 1 i two t s h w')
     mesh_gt = mesh_gt[...,-16:,-16:]
     print("mesh_gt.shape: ",mesh_gt.shape)
-    print_unique_hw(mesh_gt)
+    # print_unique_hw(mesh_gt)
 
     # -- read in saved mesh --
     mesh_tgt = read_mesh_text(sizes)
     print("mesh_tgt.shape: ",mesh_tgt.shape)
-    print_unique_hw(mesh_tgt)
+    # print_unique_hw(mesh_tgt)
 
     # -- compute the difference --
     delta = np.sum(np.abs(mesh_gt - mesh_tgt)).item()

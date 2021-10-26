@@ -28,9 +28,7 @@ namespace faiss {
     // }
 
     float compute_mode(Tensor<int, 1, true>& cluster_sizes,
-		       int patchsize, float std){
-      return 0;
-    }
+		       int patchsize, float std);
 
   }
 }

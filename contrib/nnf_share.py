@@ -1,3 +1,5 @@
+
+# -- python imports --
 import torch
 import torchvision
 import faiss
@@ -8,8 +10,8 @@ th_pad = torchvision.transforms.functional.pad
 
 # -- project imports --
 import sys
-sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib")
-from align.xforms import align_from_pix,align_from_flow
+sys.path.append("/home/gauenk/Documents/faiss/contrib")
+from warp_utils import *
 
 # -- torchvision fxn --
 center_crop = torchvision.transforms.functional.center_crop
@@ -29,43 +31,6 @@ def mode_ndarray(ndarray):
     mode = bins[hist.argmax()]
     return mode
 
-def warp_burst_from_pix(burst,pix,nblocks):
-
-    # -- block ranges per pixel --
-    nframes,nimages,h,w,k,two = pix.shape
-    nparticles = k
-    pix = rearrange(pix,'t i h w p two -> p i (h w) t two')
-
-    # -- create offsets --
-    warps = []
-    for p in range(nparticles):
-        warped = align_from_pix(burst,pix[p],nblocks)
-        warps.append(warped)
-    warps = torch.stack(warps).to(burst.device)
-
-    return warps
-
-def warp_burst_from_locs(burst,locs,nblocks,isize):
-
-    # -- block ranges per pixel --
-    nframes,nimages,h,w,k,two = locs.shape
-    nparticles = k
-
-    # -- locs 2 flow --
-    flows = locs2flow(locs)
-    flows = rearrange(flows,'t i h w p two -> p i (h w) t two')
-
-    # -- create offsets --
-    warps = []
-    for p in range(nparticles):
-        warped = align_from_flow(burst,flows[p],1,isize=isize)
-        warps.append(warped)
-
-    warps = torch.stack(warps).to(burst.device)
-
-
-    return warps
-
 def padLocs(locs,pad,mode='constant'):
     nframes,nimages,h,w,k,two = locs.shape
     locs = rearrange(locs,'t i h w k two -> t i k two h w')
@@ -79,32 +44,6 @@ def padLocs(locs,pad,mode='constant'):
         plocs[...,:,w+pad:] = plocs[...,:,[w+pad-1]]
     plocs = rearrange(plocs,'t i k two h w -> t i h w k two')
     return plocs
-
-def locs2flow(locs):
-    # flows = rearrange(locs,'t i h w p two -> p i (h w) t two')
-    flows_y = -locs[...,0]
-    flows_x = locs[...,1]
-    flows = torch.stack([flows_x,flows_y],dim=-1)
-    return flows
-
-def flow2locs(flow):
-    # flow = rearrange(flow,'t i h w p two -> p i (h w) t two')
-    locs_y = flow[...,0]
-    locs_x = -flow[...,1]
-    locs = torch.stack([locs_x,locs_y],dim=-1)
-    return locs
-
-def pix2locs(pix):
-    nframes,nimages,h,w,k,two = pix.shape
-    lnames = loc_index_names(1,h,w,k,pix.device)
-    # -- (y,x) -> (x,y) --
-    pix_y = pix[...,0]
-    pix_x = pix[...,1]
-    pix = torch.stack([pix_x,pix_y],dim=-1)
-
-    # -- (x_new,y_new) -> (x_offset,y_offset) --
-    locs = pix - lnames
-    return locs
 
 def loc_index_names(nimages,h,w,k,device):
     npix = h*w

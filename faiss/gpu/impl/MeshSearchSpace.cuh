@@ -1,8 +1,11 @@
 
-#include <algorithm>
+#pragma once
+
+#include <faiss/gpu/utils/Tensor.cuh>
 
 namespace faiss {
   namespace gpu {
+
     void create_search_space(Tensor<int, 5, true>& search_ranges,
 			     Tensor<int, 5, true>& blocks,
 			     Tensor<int, 3, true>& curr_blocks,

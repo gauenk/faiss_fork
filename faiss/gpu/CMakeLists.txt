@@ -13,6 +13,7 @@ set(FAISS_GPU_SRC
   GpuSubBurstNnfDistance.cu
   GpuBurstNnfDistance.cu
   GpuKmBurst.cu
+  GpuKmBurstPyTests.cu
   GpuIndex.cu
   GpuIndexBinaryFlat.cu
   GpuIndexFlat.cu
@@ -29,14 +30,26 @@ set(FAISS_GPU_SRC
   impl/BroadcastSumSubBurst.cu
   impl/Distance.cu
   impl/KmBurstDistance.cu
+  impl/KmBurstL2Norm.cu
   impl/KMeans.cu
   impl/KmClusterUpdate.cu
   impl/KmCentroidUpdate.cu
   impl/PairwiseDistances.cu
+  impl/TestKmBurstDistance.cu
+  impl/TestPairwiseDistances.cu
+  impl/TestClusterUpdate.cu
+  impl/TestCentroidUpdate.cu
+  impl/TestMeshSearchSpace.cu
+  impl/TestKMeans.cu
+  impl/TestComputeMode.cu
+  impl/TestKmBurstAve.cu
+  impl/TestKmBurstL2Norm.cu
+  impl/TestKmBurstTopK.cu
   impl/SubBurstPatchDistance.cu
   impl/BurstPatchDistance.cu
   impl/ImagePatchDistance.cu
   impl/MeshSearchSpace.cu
+  impl/KmUtils.cu
   impl/FlatIndex.cu
   impl/IVFAppend.cu
   impl/IVFBase.cu
@@ -118,6 +131,8 @@ set(FAISS_GPU_HEADERS
   GpuSubBurstNnfDistance.h
   GpuBurstNnfDistance.h
   GpuKmBurst.h
+  GpuKmBurstPyTests.h
+  TestResources.h
   GpuDistanceDataType.h
   GpuFaissAssert.h
   GpuIndex.h
@@ -137,10 +152,21 @@ set(FAISS_GPU_HEADERS
   impl/BroadcastSumSubBurst.cuh
   impl/Distance.cuh
   impl/KmBurstDistance.cuh
+  impl/KmBurstL2Norm.cuh
   impl/KMeans.cuh
   impl/KmClusterUpdate.cuh
   impl/KmCentroidUpdate.cuh
   impl/PairwiseDistances.cuh
+  impl/TestKmBurstDistance.cuh
+  impl/TestPairwiseDistances.cuh
+  impl/TestClusterUpdate.cuh
+  impl/TestCentroidUpdate.cuh
+  impl/TestMeshSearchSpace.cuh
+  impl/TestKMeans.cuh
+  impl/TestComputeMode.cuh
+  impl/TestKmBurstAve.cuh
+  impl/TestKmBurstL2Norm.cuh
+  impl/TestKmBurstTopK.cuh
   impl/SubBurstPatchDistance.cuh
   impl/BurstPatchDistance.cuh
   impl/ImagePatchDistance.cuh

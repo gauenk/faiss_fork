@@ -16,6 +16,7 @@
 #include <faiss/gpu/impl/MeshSearchSpace.cuh>
 #include <faiss/gpu/impl/KmUtils.cuh>
 #include <faiss/gpu/impl/KMeans.cuh>
+#include <faiss/gpu/impl/KmBurstL2Norm.cuh>
 #include <faiss/gpu/impl/L2Norm.cuh>
 #include <faiss/gpu/impl/BurstNnfL2Norm.cuh>
 #include <faiss/gpu/impl/L2Select.cuh>
@@ -25,6 +26,7 @@
 #include <faiss/gpu/utils/MatrixMult.cuh>
 #include <faiss/gpu/utils/BurstNnfSimpleBlockSelect.cuh>
 #include <faiss/gpu/utils/BlockIndices2Labels.cuh>
+#include <faiss/gpu/impl/KmUtils.cuh>
 
 #include <cstdio>
 #include <thrust/device_ptr.h>
@@ -66,8 +68,10 @@ void runKmBurstDistance(
     // Size of proposed image 
     auto nftrs = burst.getSize(0);
     auto nframes = burst.getSize(1);
-    auto heightPad = burst.getSize(2);
-    auto widthPad = burst.getSize(3);
+    // auto heightPad = burst.getSize(2);
+    // auto widthPad = burst.getSize(3);
+    auto height_b = burst.getSize(2);
+    auto width_b = burst.getSize(3);
 
     // Size of search ranges 
     int two_sr = search_ranges.getSize(0);
@@ -92,8 +96,10 @@ void runKmBurstDistance(
     FAISS_ASSERT(nframes == nframes_ind);
     FAISS_ASSERT(nframes == nframes_sr);
     FAISS_ASSERT(nsearch == nsearch_sr);
-    FAISS_ASSERT(height == (heightPad-2*psHalf));
-    FAISS_ASSERT(width == (widthPad-2*psHalf));
+    // FAISS_ASSERT(height == (heightPad-2*psHalf));
+    // FAISS_ASSERT(width == (widthPad-2*psHalf));
+    FAISS_ASSERT(height == height_b);
+    FAISS_ASSERT(width == width_b);
     FAISS_ASSERT(height == height_ind);
     FAISS_ASSERT(width == width_ind);
     FAISS_ASSERT(height == height_sr);
@@ -336,9 +342,14 @@ void runKmBurstDistance(
     //
     // Temporary memory space for "clustering" and "centroid" vars
     //
+    DeviceTensor<T, 5, true> kmDistBuf_1(res,
+    	makeTempAlloc(AllocType::Other, stream),
+	{nframes, nframes, tileBlocks, tileHeight, tileWidth});
+    DeviceTensor<T, 5, true>* kmDistBufs[1] = {&kmDistBuf_1};
+
     DeviceTensor<int, 4, true> clusterBuf_1(res,
     	makeTempAlloc(AllocType::Other, stream),
-	{nframes, nblocks, tileHeight, tileWidth});
+	{nframes, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<int, 4, true>* clusterBufs[1] = {&clusterBuf_1};
 
     DeviceTensor<T, 5, true> centroidBuf_1(res,
@@ -350,56 +361,54 @@ void runKmBurstDistance(
     // Temporary memory space to *ave* a single batch of images
     //
 
-    int tileHeightPad = tileHeight + 2*psHalf;
-    int tileWidthPad = tileWidth + 2*psHalf;
     DeviceTensor<T, 4, true> aveBuf_1(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_2(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_3(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_4(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_5(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_6(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_7(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_8(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_9(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_10(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_11(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_12(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_13(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_14(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_15(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true> aveBuf_16(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{nftrs, tileBlocks, tileHeightPad, tileWidthPad});
+    	{nftrs, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 4, true>* aveBufs[16];
     aveBufs[0] = &aveBuf_1;
     aveBufs[1] = &aveBuf_2;
@@ -434,12 +443,11 @@ void runKmBurstDistance(
 
 	// create indices for height tiling
         int curHeightSize = std::min(tileHeight, height - i);
-	int paddedHeightSize = std::min(tileHeightPad,heightPad - i);
 
 	// create views from height tile 
 	auto curBlocksHeightView = curr_blocks.narrow(1, i, curHeightSize);
         auto outDistanceHeightView = outDistances.narrow(1, i, curHeightSize);
-	auto burstHeightView = burst.narrow(2, i, paddedHeightSize);
+	auto burstHeightView = burst.narrow(2, i, curHeightSize);
         auto outIndexHeightView = outIndices.narrow(3, i, curHeightSize);
 	auto srangesHeightView = search_ranges.narrow(3, i, curHeightSize);
 
@@ -452,12 +460,11 @@ void runKmBurstDistance(
 
 	    // create indices for height tiling
             int curWidthSize = std::min(tileWidth, width - j);
-	    int paddedWidthSize = std::min(tileWidthPad,widthPad - j);
 
 	    // view from width tiling
 	    auto curBlocksView = curBlocksHeightView.narrow(2, j, curWidthSize);
             auto outDistanceView = outDistanceHeightView.narrow(2, j, curWidthSize);
-            auto burstView = burstHeightView.narrow(3, j, paddedWidthSize);
+            auto burstView = burstHeightView.narrow(3, j, curWidthSize);
             auto outIndexView = outIndexHeightView.narrow(4, j, curWidthSize);
 	    auto srangesView = srangesHeightView.narrow(4, j, curWidthSize);
 
@@ -485,13 +492,13 @@ void runKmBurstDistance(
 		// get batch of search space
         	auto curBlockSize = std::min(tileBlocks, nblocks - blk);
 
-        	// printf("(curHeightSize,curWidthSize,curBlockSize): (%d,%d,%d)\n",
-        	// 	     curHeightSize,curWidthSize,curBlockSize);
+        	printf("(curHeightSize,curWidthSize,curBlockSize): (%d,%d,%d)\n",
+        		     curHeightSize,curWidthSize,curBlockSize);
 
 		// 
 		//  Views of Tensors
 		//
-        	auto blockView = blocks.narrow(1, blk, curBlockSize);
+        	auto blockView = blocks.narrow(2, blk, curBlockSize);
         	auto aveView = aveBufs[curStream]
 		  ->narrow(1, 0, curBlockSize)
 		  .narrow(2, 0, curHeightSize+2*psHalf)
@@ -500,14 +507,18 @@ void runKmBurstDistance(
 		  ->narrow(0, 0, curHeightSize)
 		  .narrow(1, 0, curWidthSize)
 		  .narrow(2, 0, curBlockSize);
+		auto kmDistView = kmDistBufs[curStream]
+		  ->narrow(2, 0, curBlockSize)
+		  .narrow(3, 0, curHeightSize)
+		  .narrow(4, 0, curWidthSize);
         	auto clusterView = clusterBufs[curStream]
-		  ->narrow(0, 0, curHeightSize)
-		  .narrow(1, 0, curWidthSize)
-		  .narrow(2, 0, curBlockSize);
+		  ->narrow(1, 0, curBlockSize)
+		  .narrow(2, 0, curHeightSize)
+		  .narrow(3, 0, curWidthSize);
         	auto centroidView = centroidBufs[curStream]
-		  ->narrow(0, 0, curHeightSize)
-		  .narrow(1, 0, curWidthSize)
-		  .narrow(2, 0, curBlockSize);
+		  ->narrow(2, 0, curBlockSize)
+		  .narrow(3, 0, curHeightSize)
+		  .narrow(4, 0, curWidthSize);
 
 		//
         	// Assert Shapes
@@ -517,29 +528,25 @@ void runKmBurstDistance(
         	FAISS_ASSERT(aveView.getSize(3) == burstView.getSize(3));
 
         	//
-        	// Compute Clusters
+        	// Compute Clusters using Patches
         	//
 
-		kmeans_clustering(burstView,
-				  blockView,
-				  centroidView,
-				  clusterView,
-				  cluster_sizes,
-				  patchsize,
-				  kmeansK,
-				  streams[curStream]);
+		kmeans_clustering(kmDistView,burstView,blockView,
+				  centroidView,clusterView,
+				  cluster_sizes,patchsize,
+				  kmeansK,(float)0.,streams[curStream]);
 
 		//
 		// Compute Mode
 		//
 
-		mode = compute_mode(cluster_sizes,patchsize,std);
+		// mode = compute_mode(cluster_sizes,patchsize,std);
 
 		//
 		// Compute Average of Clusters
 		//
 
-        	// runBurstAverage(centroidView,blockView,
+        	// runKmBurstAverage(centroidView,blockView,
 		// 		aveView,patchsize,nsearch,
 		// 		streams[curStream]);
         
@@ -550,20 +557,22 @@ void runKmBurstDistance(
         
         
         	//
-        	// Execute Template Search
+        	// L2Norm over Patches
         	//
-        	// runSubBurstNnfL2Norm(centroidView,aveView,
-		// 		     blockLabelView,
-		// 		     distanceBufView,
-		// 		     // outDistanceView,
-		// 		     patchsize,nsearch,true,
-		// 		     streams[curStream]);
+
+        	runKmBurstL2Norm(centroidView,
+				 aveView,
+				 blockView,
+				 distanceBufView,
+				 // outDistanceView,
+				 patchsize,nsearch,true,
+				 streams[curStream]);
         
         	// 
         	//  Top K Selection 
         	//
 
-        	// runBurstNnfSimpleBlockSelect(distanceBufView,
+        	// runKmBurstTopK(distanceBufView,
 		// 			     blockLabelView,
 		// 			     outDistanceView,
 		// 			     outIndexView,

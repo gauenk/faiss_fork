@@ -33,10 +33,7 @@ import sub_burst as sbnnf_utils
 from bp_search import runBpSearch
 from nnf_share import padAndTileBatch,padBurst,tileBurst,pix2locs
 from kmb_search import runKmSearch
-
-# -- local imports --
-sys.path.append("/home/gauenk/Documents/faiss/tests/")
-from kmburst.utils import compute_gt_burst,set_seed
+from kmb_search.testing.utils import compute_gt_burst,set_seed
 
 def exp_setup():
     # seed = 234

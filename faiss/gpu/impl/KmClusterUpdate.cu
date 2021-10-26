@@ -59,6 +59,7 @@ namespace faiss {
 	update_clusters_kernel<T>
 	  <<<grid,block,0,stream>>>(dists,clusters,sizes);
       }
+      CUDA_TEST_ERROR();
 
     }
 

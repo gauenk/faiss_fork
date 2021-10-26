@@ -72,6 +72,7 @@ namespace faiss {
 	update_centroids_kernel<T><<<grid,block,0,stream>>>(dists,burst,blocks,
 							    centroids,clusters,sizes);
       }
+      CUDA_TEST_ERROR();
 							    
     }
 
