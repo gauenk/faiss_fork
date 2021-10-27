@@ -55,9 +55,8 @@ namespace faiss {
 		       Tensor<int, 4, true, int>& clusters,
 		       int patchsize, float offset,
 		       cudaStream_t stream){
-	fprintf(stdout,"test case 1.\n");
-	// pairwise_distances(dists,burst,blocks,centroids,
-	// 			 clusters,patchsize,offset,stream);
+	pairwise_distances(dists,burst,blocks,centroids,
+			   clusters,patchsize,offset,stream);
       }
 
     } // namespace test_pwd

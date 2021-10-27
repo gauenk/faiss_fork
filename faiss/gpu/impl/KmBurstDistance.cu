@@ -447,7 +447,6 @@ void runKmBurstDistance(
 	// create views from height tile 
 	auto curBlocksHeightView = curr_blocks.narrow(1, i, curHeightSize);
         auto outDistanceHeightView = outDistances.narrow(1, i, curHeightSize);
-	auto burstHeightView = burst.narrow(2, i, curHeightSize);
         auto outIndexHeightView = outIndices.narrow(3, i, curHeightSize);
 	auto srangesHeightView = search_ranges.narrow(3, i, curHeightSize);
 
@@ -464,7 +463,6 @@ void runKmBurstDistance(
 	    // view from width tiling
 	    auto curBlocksView = curBlocksHeightView.narrow(2, j, curWidthSize);
             auto outDistanceView = outDistanceHeightView.narrow(2, j, curWidthSize);
-            auto burstView = burstHeightView.narrow(3, j, curWidthSize);
             auto outIndexView = outIndexHeightView.narrow(4, j, curWidthSize);
 	    auto srangesView = srangesHeightView.narrow(4, j, curWidthSize);
 
@@ -523,15 +521,15 @@ void runKmBurstDistance(
 		//
         	// Assert Shapes
 		//
-        	FAISS_ASSERT(aveView.getSize(0) == burstView.getSize(0));
-        	FAISS_ASSERT(aveView.getSize(2) == burstView.getSize(2));
-        	FAISS_ASSERT(aveView.getSize(3) == burstView.getSize(3));
+        	// FAISS_ASSERT(aveView.getSize(0) == burstView.getSize(0));
+        	// FAISS_ASSERT(aveView.getSize(2) == burstView.getSize(2));
+        	// FAISS_ASSERT(aveView.getSize(3) == burstView.getSize(3));
 
         	//
         	// Compute Clusters using Patches
         	//
 
-		kmeans_clustering(kmDistView,burstView,blockView,
+		kmeans_clustering(kmDistView,burst,blockView,
 				  centroidView,clusterView,
 				  cluster_sizes,patchsize,
 				  kmeansK,(float)0.,streams[curStream]);

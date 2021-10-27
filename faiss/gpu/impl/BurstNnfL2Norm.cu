@@ -59,7 +59,7 @@ __global__ void nnfl2NormRowMajor(
     float* smem = (float*)smemByte;
 
     // get the cuda vars 
-    IndexType numWarps = utils::divUp(blockDim.x, kWarpSize);
+    IndexType numWarps = utils::divUp(blockDim.x, kWarpSize); 
     IndexType laneId = getLaneId();
     IndexType threadId = threadIdx.x;
     IndexType warpId = threadId / kWarpSize;
@@ -353,7 +353,6 @@ __global__ void nnfl2NormRowMajor(
 	      }
 	    }
         } else {
-            TVec tmp[RowTileSize][ColTileSize][BlockTileSize];
 
             // A block of threads is the exact size of the vector
 #pragma unroll
@@ -403,7 +402,7 @@ __global__ void nnfl2NormRowMajor(
 		    burst[fIdx][ftr][targetRow][targetCol]
 		    : TVecMax;
 		  TVec ave_val = ave[ftr][refBlk][refRow][refCol];
-		  tmp[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
+		  pixNorm[row][col][blk] = Math<TVec>::sub(burst_val,ave_val);
 
 		}
 	      }
@@ -415,8 +414,8 @@ __global__ void nnfl2NormRowMajor(
 	      for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 		for (int blk = 0; blk < BlockTileSize; ++blk) {
-		  tmp[row][col][blk] = Math<TVec>::mul(tmp[row][col][blk],
-						       tmp[row][col][blk]);
+		  pixNorm[row][col][blk] = Math<TVec>::mul(pixNorm[row][col][blk],
+							   pixNorm[row][col][blk]);
 		}
 	      }
             }
@@ -428,8 +427,8 @@ __global__ void nnfl2NormRowMajor(
 	      for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 		for (int blk = 0; blk < BlockTileSize; ++blk) {
-		  tmp[row][col][blk] = Math<TVec>::mul(tmp[row][col][blk],
-						       inv_frames);
+		  pixNorm[row][col][blk] = Math<TVec>::mul(pixNorm[row][col][blk],
+							   inv_frames);
 		}
 	      }
             }
@@ -440,7 +439,7 @@ __global__ void nnfl2NormRowMajor(
 	      for (int col = 0; col < ColTileSize; ++col) {
 #pragma unroll
 		for (int blk = 0; blk < BlockTileSize; ++blk) {
-		  pixNorm[row][col][blk] = Math<TVec>::reduceAdd(tmp[row][col][blk]);
+		  pixNorm[row][col][blk] = Math<TVec>::reduceAdd(pixNorm[row][col][blk]);
 		}
 	      }
 	    }

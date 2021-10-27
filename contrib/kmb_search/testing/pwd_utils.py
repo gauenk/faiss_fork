@@ -32,7 +32,7 @@ def pwd_setup(k,t,h,w,c,ps,std,device):
     # -- apply dynamic xform --
     dynamic_info = edict()
     dynamic_info.mode = 'global'
-    dynamic_info.nframes = 4
+    dynamic_info.nframes = t
     dynamic_info.ppf = 1
     dynamic_info.frame_size = [h,w]
     dyn_xform = get_dynamic_transform(dynamic_info,None)

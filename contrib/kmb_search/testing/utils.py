@@ -2,6 +2,10 @@ import torch
 import numpy as np
 
 
+def random_blocks(t,s,h,w):
+    minHW = min(h,w)
+    return torch.randint(0,minHW,(2,t,s,h,w)).type(torch.int)
+
 def compute_gt_burst(burst,pix_hw,flow,ps,nblocks):
     psHalf = ps//2
     padOffset = nblocks//2

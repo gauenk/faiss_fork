@@ -12,6 +12,7 @@ from easydict import EasyDict as edict
 import sys
 sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib")
 from align.xforms import align_from_pix,align_from_flow
+from pyutils import get_img_coords
 
 
 # ------------------------------
@@ -53,15 +54,17 @@ def pix2locs(pix):
 #
 # ------------------------------
 
-def warp_burst_from_pix(burst,pix,nblocks):
+def warp_burst_from_pix(burst,pix,nblocks=None):
     ndim = burst.dim()
     if ndim == 5:
-        return warp_burst_from_pix_5dburst(burst,pix,nblocks)
+        return warp_burst_from_pix_5d_burst(burst,pix,nblocks)
+    if ndim == 4:
+        return warp_burst_from_pix_4d_burst(burst,pix)
     else:
         msg = f"Uknown warp_burst_from_pix for burst with dims {ndim}"
         raise NotImplemented(msg)
 
-def warp_burst_from_pix_5dburst(burst,pix,nblocks):
+def warp_burst_from_pix_5d_burst(burst,pix,nblocks):
 
     # -- block ranges per pixel --
     assert burst.dim() == 5,"The image batch dim is included"
@@ -77,6 +80,17 @@ def warp_burst_from_pix_5dburst(burst,pix,nblocks):
     warps = torch.stack(warps).to(burst.device)
 
     return warps
+
+def warp_burst_from_pix_4d_burst(burst,pix):
+
+    # -- block ranges per pixel --
+    two,nframes,nsearch,h,w = pix.shape
+    assert two == 2,"Input shape starts with two."
+
+    # -- pix 2 locs --
+    coords = get_img_coords(nframes,nsearch,h,w)
+    locs = pix - coords.to(pix.device)
+    return warp_burst_from_locs_4d_burst(burst,locs,None)
 
 def warp_burst_from_locs(burst,locs,isize=None):
     ndim = burst.dim()
