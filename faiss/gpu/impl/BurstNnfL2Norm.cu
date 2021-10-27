@@ -443,7 +443,7 @@ __global__ void nnfl2NormRowMajor(
 		}
 	      }
 	    }
-	}
+	} // if-else NormLoop
 
         // Sum up all parts within each warp
 #pragma unroll

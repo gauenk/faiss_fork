@@ -1,5 +1,4 @@
 
-
 # -- python --
 import pytest
 
@@ -10,13 +9,13 @@ import torch
 import sys
 import faiss
 sys.path.append("/home/gauenk/Documents/faiss/contrib/")
-from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges,compute_pairwise_distance
+from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges
 from kmb_search.testing.interface import exec_test,init_zero_tensors
-from kmb_search.testing.pwd_utils import PWD_TYPE,pwd_setup
+from kmb_search.testing.centroid_update_utils import CENTROID_TYPE,centroid_setup
 
-@pytest.mark.pwd
-@pytest.mark.case0
-def test_case_0():
+@pytest.mark.centroid
+@pytest.mark.case1
+def test_case_1():
 
     # -- params --
     k = 1
@@ -37,22 +36,23 @@ def test_case_0():
     # -- create tensors --
     zinits = init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,
                                nfsearch,kmeansK,nsiters,device)
-    burst,block_gt = pwd_setup(k,t,h,w,c,ps,std,device)
+    burst,block_gt = centroid_setup(k,t,h,w,c,ps,std,device)
     search_ranges = jitter_search_ranges(nsearch_xy,t,h,w).to(device)
     search_frames = tiled_search_frames(nfsearch,nsiters,t//2).to(device)
-    blocks = mesh_from_ranges(search_ranges,search_frames[0],block_gt,t//2).to(device)
-    dists = torch.zeros_like(zinits.km_dists)
+    centroids = torch.zeros_like(zinits.centroids)
 
-    # -- compute using cpp --
-    exec_test(PWD_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
-              burst,block_gt,search_frames,zinits.search_ranges,
-              zinits.outDists,zinits.outInds,zinits.modes,dists,
-              zinits.centroids,zinits.clusters,zinits.cluster_sizes,
-              zinits.blocks,zinits.ave)
+    # -- execute test --
+    exec_test(CENTROID_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,
+              std,burst,block_gt,search_frames,zinits.search_ranges,
+              zinits.outDists,zinits.outInds,zinits.modes,zinits.km_dists,
+              centroids,zinits.clusters,zinits.cluster_sizes,zinits.blocks,zinits.ave)
 
     # -- compute using python --
-    dists_gt = torch.ones_like(dists)
+    centroids_gt = torch.ones_like(zinits.centroids)
     
     # -- compare results --
-    delta = torch.sum(torch.abs(dists - dists_gt)).item()
+    delta = torch.sum(torch.abs(centroids - centroids_gt)).item()
     assert delta < 1e-8, "Difference must be smaller than tolerance."
+
+
+    

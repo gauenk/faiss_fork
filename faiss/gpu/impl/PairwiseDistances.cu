@@ -19,6 +19,15 @@
 namespace faiss {
   namespace gpu {
 
+#define inline_min(a, b) ( (a) < (b) ? (a) : (b) )
+
+    // stack overflow: #27086195
+    __forceinline__ __device__ void k2ij(int k, int t,
+					 int& t0, int& t1){
+      t1 = t - 2 - (int)(sqrt((float)-8*k + 4*t*(t-1) - 7)/2. - 0.5);
+      t0 = k + t1 + 1 - t*(t-1)/2 + (t-t1)*(t-t1-1)/2;
+    }
+
     __forceinline__ __device__ int hw_boundary(int hw, int max){
       hw = (hw) < 0 ? -(hw) : (hw);
       hw = (hw) > (max) ? (2*(max) - (hw)) : (hw);
@@ -49,7 +58,8 @@ namespace faiss {
       hIdx = wDiv % patchsize;
     }
 
-    template <typename T, int hTile, int wTile, int bTile, int maxFrames, bool NormLoop>
+    template <typename T, int hTile, int wTile, int bTile,
+      int maxFramePairs, bool NormLoop>
     __global__ void pairwise_distances_kernel(Tensor<T, 5, true, int> dists,
 					      Tensor<T, 4, true, int> burst,
 					      Tensor<int, 5, true, int> indices,
@@ -82,24 +92,27 @@ namespace faiss {
       int batchWidth = dists.getSize(4);
 
       // start of thread's batch
-      int hStart = hTile * (blockIdx.x);
-      int wStart = wTile * (blockIdx.y);
+      int hStart = hTile * blockIdx.x;
+      int wStart = wTile * blockIdx.y;
       int bStart = bTile * blockIdx.z;
+      bool lastTile = (hStart+hTile-1) >= batchHeight;
+      lastTile = lastTile || ((wStart+wTile-1) >= batchWidth);
+      lastTile = lastTile || ((bStart+bTile-1) >= nindices);
       
       // vars for comp
-      bool valid;
       int psHalf = patchsize/2;
       int dim = nftrs * patchsize * patchsize;
       T inv_dim = 1./dim;
       int h_t0,w_t0,h_t1,w_t1;
       int fIdx,row,col,blk,wOffset,hOffset;
       T burst_t0,burst_t1,delta;
-      bool lastTile = false;
       int row_t0, col_t0, row_t1, col_t1;
       row_t0 = 0;
       col_t0 = 0;
       row_t1 = 0;
       col_t1 = 0;
+      int t0,t1;
+      int numFramePairs = nframes * (nframes - 1)/2;
       
       // accumulate in f32
       float thread_norm[hTile][wTile][bTile];
@@ -108,21 +121,21 @@ namespace faiss {
       // compute average across patch for fixed (t0,t1) pair
       //
 #pragma unroll
-      for (int t0 = 0; t0 < maxFrames; ++t0) {
-	if(t0 >= nframes){
-	  continue;
-	}
-#pragma unroll
-	for(int t1 = 0; t1 < maxFrames; ++t1){
-	  if(t1 >= t0){
-	    continue;
+      for (int t_pair = 0; t_pair < maxFramePairs; ++t_pair) {
+	k2ij(t_pair,nframes,t0,t1);
+	if (t_pair >= numFramePairs)
+	  {
+	    break;
 	  }
 
-
 	  if (lastTile){
-	    int numH = height - hStart;
-	    int numW = width - wStart;
+	    int numH = batchHeight - hStart;
+	    numH = inline_min(hTile,numH);
+	    int numW = batchWidth - wStart;
+	    numW = inline_min(wTile,numW);
 	    int numB = nindices - bStart;
+	    numB = inline_min(bTile,numB);
+
 	    for (int row_iter = 0; row_iter < numH; ++row_iter) {
 	      for (int col_iter = 0; col_iter < numW; ++col_iter) {
 		for (int blk_iter = 0; blk_iter < numB; ++blk_iter) {
@@ -170,7 +183,6 @@ namespace faiss {
 		    get_top_left(indices, psHalf,t0, t1, blk, row, col,
 				 row_t0, col_t0, row_t1, col_t1);
 
-
 		    // valid hw indices
 		    h_t0 = hw_boundary(row_t0 + hOffset, height-1);
 		    w_t0 = hw_boundary(col_t0 + wOffset, width-1);
@@ -200,7 +212,7 @@ namespace faiss {
 		} // blk_iter
 	      } // col_iter
 	    } // row_iter
-	  }else{//lastTile
+	  }else{ //lastTile
 
 	    if (NormLoop){
 
@@ -208,7 +220,7 @@ namespace faiss {
 
 	      // set thread vector to 0
 #pragma unroll
-	      for (int row_i = 0; row_i < hTile; ++row) {
+	      for (int row_i = 0; row_i < hTile; ++row_i) {
 #pragma unroll
 		for (int col_i = 0; col_i < wTile; ++col_i) {
 #pragma unroll
@@ -236,7 +248,7 @@ namespace faiss {
 				  nframes, fIdx, wOffset, hOffset);
 
 		      // top-left indices
-		      get_top_left(indices, psHalf,t0, t1, blk, row, col,
+		      get_top_left(indices, psHalf, t0, t1, blk, row, col,
 				   row_t0, col_t0, row_t1, col_t1);
 
 		      // valid hw indices
@@ -260,7 +272,7 @@ namespace faiss {
 		  for (int col_i = 0; col_i < wTile; ++col_i) {
 #pragma unroll
 		    for (int blk_i = 0; blk_i < bTile; ++blk_i) {
-		      thread_norm[row_i][col_i][blk_i] =
+		      tmp[row_i][col_i][blk_i] =
 			Math<T>::mul(tmp[row_i][col_i][blk_i],
 				     tmp[row_i][col_i][blk_i]);
 		    }
@@ -275,7 +287,8 @@ namespace faiss {
 #pragma unroll
 		    for (int blk_i = 0; blk_i < bTile; ++blk_i) {
 		      thread_norm[row_i][col_i][blk_i] =
-			Math<T>::reduceAdd(thread_norm[row_i][col_i][blk_i]);
+			thread_norm[row_i][col_i][blk_i] +
+			Math<T>::reduceAdd(tmp[row_i][col_i][blk_i]);
 		    }
 		  }
 		}
@@ -344,7 +357,7 @@ namespace faiss {
 		}
 	      }
 
-	    }
+	    } // if-else NormLoop
 
 	    // Sum up all parts within each warp
 #pragma unroll
@@ -461,9 +474,9 @@ namespace faiss {
 
 	  __syncthreads(); // sync threads across block
 
-	} // t1 for-loop
-      } // t0 for-loop
-
+      // 	} // t1 for-loop
+      // } // t0 for-loop
+      } // t_pairs for-loop
     } 
     
 
@@ -482,28 +495,33 @@ namespace faiss {
       int maxThreads = (int)getMaxThreadsCurrentDevice();
       constexpr int hTile = 1;
       constexpr int wTile = 1;
-      constexpr int bTile = 1;
-      constexpr int maxFrames = 50;
+      constexpr int bTile = 4;
+      constexpr int maxFrames = 25;
+      constexpr int maxFramePairs = maxFrames * (maxFrames-1)/2;
 
       // compute numThreads
       int nftrs = burst.getSize(0);
       int nframes = burst.getSize(1);
       int dim = patchsize*patchsize*nftrs;
-      bool normLoop = dim > maxThreads;
+      bool NormLoop = dim > maxThreads;
       int numThreads = std::min(dim, maxThreads);
       int nWarps = utils::divUp(numThreads, kWarpSize);
+      // fprintf(stdout,"dim: %d, maxThreads: %d, NormLoop: %d, numWarps: %d, numThreads: %d\n",dim,maxThreads,NormLoop,nWarps,numThreads);
 
       // compute number of Grids
       int height = dists.getSize(3);
       int width = dists.getSize(4);
       int nblocks = blocks.getSize(2);
       int numToComp = height * width * nblocks * nframes;
-      int numToCompPerKernel = hTile * wTile * nblocks;
+      int numToCompPerKernel = hTile * wTile * bTile;
       int numHeightBlocks = utils::divUp(height, hTile);
       int numWidthBlocks = utils::divUp(width, wTile);
       int numPixBlocks = numHeightBlocks * numWidthBlocks;
       int numBlockBlocks = utils::divUp(nblocks, bTile);
       int nBlocks = utils::divUp(numToComp,numToCompPerKernel);
+      // fprintf(stdout,"numHeightBlocks: %d,numWidthBlocks: %d,numBlockBlocks: %d\n",
+      // 	      numHeightBlocks,numWidthBlocks,numBlockBlocks);
+      
 
       // launch config
       auto grid = dim3(numHeightBlocks,numWidthBlocks,numBlockBlocks);
@@ -511,15 +529,16 @@ namespace faiss {
       auto smem = sizeof(float) * numToCompPerKernel * nWarps;
 
       // launch
-      if (normLoop){
-	pairwise_distances_kernel<T,hTile,wTile,bTile,maxFrames,true>
+      if (NormLoop){
+	pairwise_distances_kernel<T,hTile,wTile,bTile,maxFramePairs,true>
 	  <<<grid,block,smem,stream>>>
 	  (dists,burst,blocks,centroids,clusters,patchsize,offset);
       }else{
-	pairwise_distances_kernel<T,hTile,wTile,bTile,maxFrames,false>
+	pairwise_distances_kernel<T,hTile,wTile,bTile,maxFramePairs,false>
 	  <<<grid,block,smem,stream>>>
 	  (dists,burst,blocks,centroids,clusters,patchsize,offset);
       }
+      CUDA_TEST_ERROR();
 							    
     }
 

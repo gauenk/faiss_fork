@@ -23,8 +23,8 @@ from kmb_search.testing.pwd_utils import pwd_setup,PWD_TYPE
 
 
 @pytest.mark.pwd
-@pytest.mark.case2
-def test_case_2():
+@pytest.mark.case4
+def test_case_4():
 
     # -- params --
     k = 1
@@ -32,9 +32,9 @@ def test_case_2():
     h = 8
     w = 8
     c = 3
-    ps = 11
+    ps = 3
     nsiters = 2 # num search iters
-    kmeansK = 3
+    kmeansK = 4
     nsearch_xy = 3
     nfsearch = 3 # num of frames searched (per iter)
     nbsearch = nsearch_xy**2 # num blocks searched (per frame)

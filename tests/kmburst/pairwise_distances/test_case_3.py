@@ -23,16 +23,16 @@ from kmb_search.testing.pwd_utils import pwd_setup,PWD_TYPE
 
 
 @pytest.mark.pwd
-@pytest.mark.case2
-def test_case_2():
+@pytest.mark.case3
+def test_case_3():
 
     # -- params --
     k = 1
     t = 10
     h = 8
     w = 8
-    c = 3
-    ps = 11
+    c = 1025
+    ps = 1
     nsiters = 2 # num search iters
     kmeansK = 3
     nsearch_xy = 3

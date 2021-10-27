@@ -19,6 +19,7 @@ sys.path.append("/home/gauenk/Documents/faiss/contrib/")
 from bp_search import create_mesh_from_ranges
 
 # -- faiss/contrib --
+from kmb_search.testing.interface import init_empty_exec
 from kmb_search.testing.utils import set_seed
 
 def pwd_setup(k,t,h,w,c,ps,std,device):
@@ -28,6 +29,9 @@ def pwd_setup(k,t,h,w,c,ps,std,device):
     #        Init Vars
     #
     # ---------------------------
+
+    # -- run to initialize GPU --
+    init_empty_exec()
 
     # -- apply dynamic xform --
     dynamic_info = edict()
@@ -50,12 +54,11 @@ def pwd_setup(k,t,h,w,c,ps,std,device):
     # ----------------------------
 
     # -- sample data --
-    image = np.random.rand(h,w,c).astype(np.float32)
+    image = np.random.rand(c,3*h,3*w).astype(np.float32)
     image[1::2,::2] = 1.
     image[::2,1::2] = 1.
     image = np.uint8(image*255.)
-    imgPIL = Image.fromarray(image)
-    dyn_result = dyn_xform(imgPIL)
+    dyn_result = dyn_xform(image)
     burst = dyn_result[0][:,None].to(device)
     flow =  dyn_result[-2]
 
@@ -64,7 +67,7 @@ def pwd_setup(k,t,h,w,c,ps,std,device):
     burst += torch.FloatTensor(noise).to(device)
     block_gt = np.c_[-flow[:,1],flow[:,0]] # (dx,dy) -> (dy,dx) with "y" [0,M] -> [M,0]
     block_gt = torch.IntTensor(block_gt)
-    save_image("burst.png",burst)
+    if c in [1,3]: save_image("burst.png",burst)
     nframes,nimages,c,h,w = burst.shape
     isize = edict({'h':h,'w':w})
     flows = repeat(flow,'t two -> 1 p t two',p=h*w)

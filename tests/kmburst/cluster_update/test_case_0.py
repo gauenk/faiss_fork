@@ -13,6 +13,7 @@ from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges
 from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.cluster_update_utils import CLUSTER_TYPE,cluster_setup
 
+@pytest.mark.clupdate
 @pytest.mark.case0
 def test_case_0():
 

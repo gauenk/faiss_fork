@@ -5,17 +5,20 @@ import pytest
 # -- pytorch --
 import torch
 
+# -- project --
+from pyutils import save_image,get_img_coords
+
 # -- faiss --
 import sys
 import faiss
 sys.path.append("/home/gauenk/Documents/faiss/contrib/")
-from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges
+from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges,update_clusters,update_cluster_sizes,compute_pairwise_distance
 from kmb_search.testing.interface import exec_test,init_zero_tensors
-from kmb_search.testing.centroid_update_utils import CENTROID_TYPE,centroid_setup
+from kmb_search.testing.cluster_update_utils import CLUSTER_TYPE,cluster_setup
 
-@pytest.mark.centroid
-@pytest.mark.case0
-def test_case_0():
+@pytest.mark.clupdate
+@pytest.mark.clu_case1
+def test_case_1():
 
     # -- params --
     k = 1
@@ -32,26 +35,35 @@ def test_case_0():
     nblocks = nbsearch**(kmeansK-1)
     std = 20./255.
     device = 'cuda:0'
+    coords = get_img_coords(t,1,h,w)[:,:,0].to(device)
+    verbose = True
 
     # -- create tensors --
     zinits = init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,
                                nfsearch,kmeansK,nsiters,device)
-    burst,block_gt = centroid_setup(k,t,h,w,c,ps,std,device)
+    burst,offset_gt = cluster_setup(k,t,h,w,c,ps,std,device)
+    block_gt = offset_gt + coords
     search_ranges = jitter_search_ranges(nsearch_xy,t,h,w).to(device)
     search_frames = tiled_search_frames(nfsearch,nsiters,t//2).to(device)
-    centroids = torch.zeros_like(zinits.centroids)
+    blocks = mesh_from_ranges(search_ranges,search_frames[0],block_gt,t//2).to(device)
+    dists = compute_pairwise_distance(burst,blocks,ps)
+    clusters = torch.zeros_like(zinits.clusters)
+    cluster_sizes = torch.zeros_like(zinits.cluster_sizes)
+    if verbose: print(zinits.shapes)
 
     # -- execute test --
-    exec_test(CENTROID_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,
+    exec_test(CLUSTER_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,
               std,burst,block_gt,search_frames,zinits.search_ranges,
               zinits.outDists,zinits.outInds,zinits.modes,zinits.km_dists,
-              centroids,zinits.clusters,zinits.cluster_sizes,zinits.blocks,zinits.ave)
+              zinits.centroids,clusters,cluster_sizes,zinits.blocks,zinits.ave)
 
     # -- compute using python --
-    centroids_gt = torch.ones_like(zinits.centroids)
+    dists_gt = compute_pairwise_distance(burst,blocks,ps)
+    clusters_gt = update_clusters(dists_gt)
+    cluster_sizes = update_cluster_sizes(clusters_gt)
     
     # -- compare results --
-    delta = torch.sum(torch.abs(centroids - centroids_gt)).item()
+    delta = torch.sum(torch.abs(clusters - clusters_gt)).item()
     assert delta < 1e-8, "Difference must be smaller than tolerance."
 
 

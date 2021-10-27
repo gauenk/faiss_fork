@@ -37,6 +37,28 @@ from kmb_search import runKmSearch
 # -- local imports --
 from kmb_search.testing.utils import compute_gt_burst,set_seed
 
+def init_empty_exec(device = 'cuda:0'):
+    k = 3
+    t = 10
+    h = 8
+    w = 8
+    c = 3
+    ps = 3
+    nblocks = 81
+    nbsearch = 3
+    nfsearch = 3
+    kmeansK = 4
+    nsiters = 2
+    std = 20.
+    zinits = init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,
+                               nfsearch,kmeansK,nsiters,device)
+    exec_test(0,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
+              zinits.burst,zinits.init_blocks,zinits.search_frames,
+              zinits.search_ranges,zinits.outDists,zinits.outInds,
+              zinits.modes,zinits.km_dists,zinits.centroids,
+              zinits.clusters,zinits.cluster_sizes,zinits.blocks,zinits.ave)
+
+
 def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,device):
     """
 
@@ -122,9 +144,8 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
 
     # -- create faiss GPU resource --
     res = faiss.StandardGpuResources()
-
-    print("int sizes.")
-    print(k,t,h,w,nblocks)
+    # print("int sizes.")
+    # print(k,t,h,w,nblocks)
 
     # -- setup args --
     args = faiss.GpuTestParams()

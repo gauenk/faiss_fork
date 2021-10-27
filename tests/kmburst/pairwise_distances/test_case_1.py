@@ -19,7 +19,7 @@ from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges
 from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.pwd_utils import pwd_setup,PWD_TYPE
 
-
+@pytest.mark.pwd
 @pytest.mark.case1
 def test_case_1():
 
@@ -71,7 +71,8 @@ def test_case_1():
     tol = 1e-4
     if verbose:
         # -- print side-by-side results --
-        midBlk = slice(nblocks//2-3,nblocks//2+3)
+        # midBlk = slice(nblocks//2-3,nblocks//2+3)
+        midBlk = slice(nblocks-2,nblocks)
         for ti in range(t):
             print(blocks[:,ti,midBlk,4,4])
         compare = torch.stack([dists,dists_gt],dim=-1)
@@ -85,15 +86,20 @@ def test_case_1():
         print("-- frame 2 --")
         print(dists[2,:,midBlk,3,2])
         print(dists_gt[2,:,midBlk,3,2])
-        print("-- inspect (t0,t1) = (1,0) @ (block = 0) --")
-        pexample = th_pad(blocks[[0],0,0,:,:],(2,)*4,padding_mode='reflect')
-        print(pexample)
         print("-"*15)
-        print(blocks[:,0,0,:,:])
+        print("-- inspect (t0,t1) = (2,1) @ (block = -1) --")
+        print("-"*15)
+        print("blocks")
+        print(blocks[:,2,0,:,:])
         print(blocks[:,1,0,:,:])
-        print(dists[1,0,0,:,:])
-        print(dists_gt[1,0,0,:,:])
-        print(torch.abs(dists[1,0,0,:,:] - dists_gt[1,0,0,:,:]) < tol)
+        print("dists")
+        a_dist = dists[2,1,-1,:,:]
+        b_dist = dists_gt[2,1,-1,:,:]
+        print(a_dist)
+        print(b_dist)
+        print("delta")
+        print(torch.abs(a_dist - b_dist) < tol)
+        print("-"*15)
     
         # -- any elem equal? --
         elem = dists[1,2,3,4,4].item()
