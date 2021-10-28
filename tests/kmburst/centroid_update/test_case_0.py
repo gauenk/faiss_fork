@@ -45,7 +45,8 @@ def test_case_0():
     exec_test(CENTROID_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,
               std,burst,block_gt,search_frames,zinits.search_ranges,
               zinits.outDists,zinits.outInds,zinits.modes,zinits.km_dists,
-              centroids,zinits.clusters,zinits.cluster_sizes,zinits.blocks,zinits.ave)
+              zinits.self_dists,centroids,zinits.clusters,zinits.cluster_sizes,
+              zinits.blocks,zinits.ave)
 
     # -- compute using python --
     centroids_gt = torch.ones_like(zinits.centroids)

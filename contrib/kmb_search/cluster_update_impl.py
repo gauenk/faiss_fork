@@ -26,15 +26,12 @@ def update_clusters(dists):
     sizes = np.zeros((tK,s,h,w)).astype(np.uint8)
     
     # -- numba --
-    print(dists[:,:,0,0,0])
     dists = dists.cpu().numpy()
     update_clusters_numba(dists,clusters,sizes)
 
     # -- to torch --
     clusters = torch.ByteTensor(clusters).to(device)
     sizes = torch.ByteTensor(sizes).to(device)
-    print(clusters[:,0,0,0])
-    print(sizes[:,0,0,0])
 
     return clusters,sizes
 
@@ -74,15 +71,12 @@ def init_clusters(dists):
     sizes = np.zeros((tK,s,h,w)).astype(np.uint8)
     
     # -- numba --
-    print(dists[:,:,0,0,0])
     dists = dists.cpu().numpy()
     init_clusters_numba(dists,clusters,sizes)
 
     # -- to torch --
     clusters = torch.ByteTensor(clusters).to(device)
     sizes = torch.ByteTensor(sizes).to(device)
-    print(clusters[:,0,0,0])
-    print(sizes[:,0,0,0])
 
     return clusters,sizes
 
