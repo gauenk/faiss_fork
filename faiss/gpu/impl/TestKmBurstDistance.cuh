@@ -34,10 +34,11 @@ namespace faiss {
 			Tensor<float, 3, true>& outDistances,
 			Tensor<int, 5, true>& outIndices,
 			Tensor<float, 5, true, int>& dists,
+			Tensor<float, 5, true, int>& self_dists,
 			Tensor<int, 5, true, int>& blocks,
 			Tensor<float, 5, true, int>& centroids,
-			Tensor<int, 4, true, int>& clusters,
-			Tensor<int, 1, true, int>& cluster_sizes,
+			Tensor<uint8_t, 4, true, int>& clusters,
+			Tensor<uint8_t, 4, true, int>& cluster_sizes,
 			Tensor<float, 1, true, int>& modes,
 			Tensor<float, 4, true, int>& ave);
     
@@ -63,10 +64,11 @@ namespace faiss {
 			Tensor<float, 3, true>& outDistances,
 			Tensor<int, 5, true>& outIndices,
 			Tensor<half, 5, true, int>& dists,
+			Tensor<half, 5, true, int>& self_dists,
 			Tensor<int, 5, true, int>& blocks,
 			Tensor<half, 5, true, int>& centroids,
-			Tensor<int, 4, true, int>& clusters,
-			Tensor<int, 1, true, int>& cluster_sizes,
+			Tensor<uint8_t, 4, true, int>& clusters,
+			Tensor<uint8_t, 4, true, int>& cluster_sizes,
 			Tensor<float, 1, true, int>& modes,
 			Tensor<half, 4, true, int>& ave);
 
@@ -96,10 +98,11 @@ namespace faiss {
 			     Tensor<float, 3, true>& outDistances,
 			     Tensor<int, 5, true>& outIndices,
 			     Tensor<T, 5, true, int>& dists,
+			     Tensor<T, 5, true, int>& self_dists,
 			     Tensor<int, 5, true, int>& blocks,
 			     Tensor<T, 5, true, int>& centroids,
-			     Tensor<int, 4, true, int>& clusters,
-			     Tensor<int, 1, true, int>& cluster_sizes,
+			     Tensor<uint8_t, 4, true, int>& clusters,
+			     Tensor<uint8_t, 4, true, int>& cluster_sizes,
 			     Tensor<float, 1, true, int>& modes,
 			     Tensor<T, 4, true, int>& ave){
       // setup device
@@ -110,7 +113,8 @@ namespace faiss {
       runKmBurstTest(resources,stream,burst,search_ranges,search_frames,
 		     init_blocks,test_type,test_case,kmeansK,nsiters,k,t,h,w,
 		     c,ps,nbsearch,nfsearch,std,outDistances,outIndices,
-		     dists,blocks,centroids,clusters,cluster_sizes,modes,ave);
+		     dists,self_dists,blocks,centroids,clusters,
+		     cluster_sizes,modes,ave);
     }
     
   }

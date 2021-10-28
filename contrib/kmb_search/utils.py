@@ -16,8 +16,6 @@ from pyutils import get_img_coords
 from bp_search import create_mesh_from_ranges
 from warp_utils import warp_burst_from_locs,warp_burst_from_pix
 th_pad = torchvision.transforms.functional.pad
-from .pwd_impl import compute_pairwise_distance
-from .cluster_update_impl import update_clusters
 
 def tiled_search_frames(nfsearch,nsiters,ref):
     sframes = torch.zeros(nsiters,nfsearch)

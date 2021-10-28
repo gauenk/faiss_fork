@@ -1,6 +1,7 @@
 
 # -- python --
 import pytest
+from einops import rearrange,repeat
 
 # -- pytorch --
 import torch
@@ -17,10 +18,11 @@ from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.cluster_update_utils import CLUSTER_TYPE,cluster_setup
 
 @pytest.mark.clu
-@pytest.mark.clu_case1
-def test_case_1():
+@pytest.mark.clu_case2
+def test_case_2():
     """
-    Testing the "init" clustering
+    Testing the clustering using the pairwise
+    distance used in kmeans
     """
 
     # -- params --
@@ -39,7 +41,7 @@ def test_case_1():
     std = 20./255.
     device = 'cuda:0'
     coords = get_img_coords(t,1,h,w)[:,:,0].to(device)
-    seed = 123
+    seed = 234
     verbose = True
 
     # -- create tensors --
@@ -57,17 +59,29 @@ def test_case_1():
     if verbose: print(zinits.shapes)
 
     # -- execute test --
-    exec_test(CLUSTER_TYPE,1,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,
+    exec_test(CLUSTER_TYPE,2,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,
               std,burst,block_gt,search_frames,zinits.search_ranges,
               zinits.outDists,zinits.outInds,zinits.modes,dists,zinits.self_dists,
               zinits.centroids,clusters,cluster_sizes,zinits.blocks,zinits.ave)
-    print(cluster_sizes)
+    print(clusters)
 
     # -- compute using python --
-    clusters_gt,csizes_gt = init_clusters(dists)
-    # clusters_gt,csizes_gt = update_clusters(dists)
-    print(csizes_gt)
+    # clusters_gt,csizes_gt = init_clusters(dists)
+    clusters_gt,csizes_gt = update_clusters(dists)
+    # print(clusters_gt)
+    # print(torch.stack([clusters_gt,clusters],dim=-1))
+    
+    # -- num of equal --
+    numEq = (clusters == clusters_gt).type(torch.float)
+    print(numEq.shape)
+    numEq_ave = torch.mean(numEq).item()
+    print("numEq_ave: ",numEq_ave)
+    numEq = rearrange(numEq,'t s h w -> t s 1 h w')
+    save_image(numEq,"numEq.png")
 
+    # -- examples neq  --
+    neq = clusters != clusters_gt
+    print(clusters_gt[torch.where(neq)])
     
     # -- compare results --
     delta = torch.sum(torch.abs(clusters - clusters_gt)).item()

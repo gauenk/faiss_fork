@@ -5,7 +5,7 @@ import torchvision
 import faiss
 import numpy as np
 from einops import rearrange,repeat
-from torch_utils import swig_ptr_from_UInt8Tensor,swig_ptr_from_HalfTensor,swig_ptr_from_FloatTensor,swig_ptr_from_IntTensor,swig_ptr_from_IndicesTensor,swig_ptr_from_BoolTensor
+from torch_utils import swig_ptr_from_UInt8Tensor,swig_ptr_from_HalfTensor,swig_ptr_from_FloatTensor,swig_ptr_from_IntTensor,swig_ptr_from_UInt8Tensor,swig_ptr_from_IndicesTensor,swig_ptr_from_BoolTensor
 th_pad = torchvision.transforms.functional.pad
 
 # -- project imports --
@@ -121,6 +121,9 @@ def torch2swig(tensor):
     elif tensor.dtype == torch.bool:
         tensor_ptr = swig_ptr_from_BoolTensor(tensor)
         tensor_dtype = None # not needed
+    elif tensor.dtype == torch.uint8:
+        tensor_ptr = swig_ptr_from_UInt8Tensor(tensor)
+        tensor_dtype = None
     else:
         raise KeyError("Uknown tensor dtype.")
     return tensor_ptr,tensor_dtype

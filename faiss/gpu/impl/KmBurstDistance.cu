@@ -117,8 +117,6 @@ void runKmBurstDistance(
     int nclusters = -1;
     float mode = 0;
     int nblocks = utils::pow(nsearch,nframes_search);
-    DeviceTensor<int, 1, true> cluster_sizes(res,
-    	makeTempAlloc(AllocType::Other, stream),{kmeansK});
     DeviceTensor<int, 2, true> search_frames(res,
 	makeTempAlloc(AllocType::Other, stream),{niters,nframes_search});
     DeviceTensor<int, 3, true> curr_blocks(res,
@@ -184,7 +182,11 @@ void runKmBurstDistance(
     // printf("(tileHeight,tileWidth,tileBlocks): (%d,%d,%d)\n",
     // 	   tileHeight,tileWidth,tileBlocks);
 
-    
+
+    DeviceTensor<uint8_t, 4, true> cluster_sizes(res,
+	makeTempAlloc(AllocType::Other, stream),
+	{kmeansK,tileBlocks,tileHeight,tileWidth});
+
 
     // We can have any number of vectors to query against, even less than k, in
     // which case we'll return -1 for the index
@@ -347,10 +349,10 @@ void runKmBurstDistance(
 	{nframes, nframes, tileBlocks, tileHeight, tileWidth});
     DeviceTensor<T, 5, true>* kmDistBufs[1] = {&kmDistBuf_1};
 
-    DeviceTensor<int, 4, true> clusterBuf_1(res,
+    DeviceTensor<uint8_t, 4, true> clusterBuf_1(res,
     	makeTempAlloc(AllocType::Other, stream),
 	{nframes, tileBlocks, tileHeight, tileWidth});
-    DeviceTensor<int, 4, true>* clusterBufs[1] = {&clusterBuf_1};
+    DeviceTensor<uint8_t, 4, true>* clusterBufs[1] = {&clusterBuf_1};
 
     DeviceTensor<T, 5, true> centroidBuf_1(res,
     	makeTempAlloc(AllocType::Other, stream),

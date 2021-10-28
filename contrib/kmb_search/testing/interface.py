@@ -55,7 +55,7 @@ def init_empty_exec(device = 'cuda:0'):
     exec_test(0,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               zinits.burst,zinits.init_blocks,zinits.search_frames,
               zinits.search_ranges,zinits.outDists,zinits.outInds,
-              zinits.modes,zinits.km_dists,zinits.centroids,
+              zinits.modes,zinits.km_dists,zinits.self_dists,zinits.centroids,
               zinits.clusters,zinits.cluster_sizes,zinits.blocks,zinits.ave)
 
 
@@ -76,10 +76,11 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
     outInds = torch.zeros(2,t,k,h,w).type(torch.int).to(device)
     modes = torch.zeros(10).type(torch.float).to(device)
     blocks = torch.zeros(2,t,nblocks,h,w).type(torch.int).to(device)
-    km_dists = torch.zeros(t,t,nblocks,h,w).type(dtype).to(device)
+    km_dists = torch.zeros(t,kmeansK,nblocks,h,w).type(dtype).to(device)
+    self_dists = torch.zeros(t,t,nblocks,h,w).type(dtype).to(device)
     centroids = torch.zeros(c,kmeansK,nblocks,h,w).type(dtype).to(device)
-    clusters = torch.zeros(t,nblocks,h,w).type(torch.int).to(device)
-    cluster_sizes = torch.zeros(kmeansK).type(torch.int).to(device)
+    clusters = torch.zeros(t,nblocks,h,w).type(torch.uint8).to(device)
+    cluster_sizes = torch.zeros(kmeansK,nblocks,h,w).type(torch.uint8).to(device)
     ave = torch.zeros(c,nblocks,h,w).type(torch.float).to(device)
 
     # -- dict output --
@@ -94,6 +95,7 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
     rdict.modes = modes
     rdict.blocks = blocks
     rdict.km_dists = km_dists
+    rdict.self_dists = self_dists
     rdict.centroids = centroids
     rdict.clusters = clusters
     rdict.cluster_sizes = cluster_sizes
@@ -109,7 +111,7 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
 
 def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
               kmeansK,std,burst,init_blocks,search_frames,search_ranges,
-              outDists,outInds,modes,km_dists,centroids,clusters,
+              outDists,outInds,modes,km_dists,self_dists,centroids,clusters,
               cluster_sizes,blocks,ave):
               
     # -- contiguous tensors --
@@ -121,6 +123,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     outInds = outInds.contiguous()
     modes = modes.contiguous()
     km_dists = km_dists.contiguous()
+    self_dists = self_dists.contiguous()
     centroids = centroids.contiguous()
     clusters = clusters.contiguous()
     blocks = blocks.contiguous()
@@ -136,6 +139,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     outInds_ptr = get_swig_ptr(outInds)
     modes_ptr = get_swig_ptr(modes)
     km_dists_ptr = get_swig_ptr(km_dists)
+    self_dists_ptr = get_swig_ptr(self_dists)
     centroids_ptr = get_swig_ptr(centroids)
     clusters_ptr = get_swig_ptr(clusters)
     blocks_ptr = get_swig_ptr(blocks)
@@ -170,6 +174,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     args.outIndices = outInds_ptr
     args.modes = modes_ptr
     args.km_dists = km_dists_ptr
+    args.self_dists = self_dists_ptr
     args.centroids = centroids_ptr
     args.clusters = clusters_ptr
     args.cluster_sizes = cluster_sizes_ptr

@@ -21,6 +21,13 @@ namespace faiss {
 
 #define inline_min(a, b) ( (a) < (b) ? (a) : (b) )
 
+    // stack overflow: #27086195
+    __forceinline__ __device__ void k2ij(int k, int t,
+					 int& t0, int& t1){
+      t1 = t - 2 - (int)(sqrt((float)-8*k + 4*t*(t-1) - 7)/2. - 0.5);
+      t0 = k + t1 + 1 - t*(t-1)/2 + (t-t1)*(t-t1-1)/2;
+    }
+
     __forceinline__ __device__ int hw_boundary(int hw, int max){
       hw = (hw) < 0 ? -(hw) : (hw);
       hw = (hw) > (max) ? (2*(max) - (hw)) : (hw);
@@ -34,8 +41,8 @@ namespace faiss {
 				 int& row_t1, int& col_t1){
       row_t0 = indices[0][t0][blk][row][col] - psHalf;
       col_t0 = indices[1][t0][blk][row][col] - psHalf;
-      row_t1 = row - psHalf;
-      col_t1 = col - psHalf;
+      row_t1 = indices[0][t1][blk][row][col] - psHalf;
+      col_t1 = indices[1][t1][blk][row][col] - psHalf;
     }
     __forceinline__ __device__ void get_indices(int tidx, int nftrs, int patchsize,
 				int nframes, int& ftr, int& wIdx, int& hIdx){
@@ -52,12 +59,11 @@ namespace faiss {
     }
 
     template <typename T, int hTile, int wTile, int bTile,
-      int maxFrames, int maxClusters, bool NormLoop>
-    __global__ void pairwise_distances_kernel(Tensor<T, 5, true, int> dists,
-					      Tensor<T, 4, true, int> burst,
-					      Tensor<int, 5, true, int> indices,
-					      Tensor<T, 5, true, int> centroids,
-					      int patchsize, float offset){
+      int maxFramePairs, bool NormLoop>
+    __global__ void self_pairwise_distances_kernel(Tensor<T, 5, true, int> dists,
+						   Tensor<T, 4, true, int> burst,
+						   Tensor<int, 5, true, int> indices,
+						   int patchsize, float offset){
 
 
       //
@@ -77,7 +83,6 @@ namespace faiss {
       // get burst image sizes
       int nftrs = burst.getSize(0);
       int nframes = burst.getSize(1);
-      int nclusters = centroids.getSize(1);
       int height = burst.getSize(2);
       int width = burst.getSize(3);
       int nindices = indices.getSize(2);
@@ -104,7 +109,9 @@ namespace faiss {
       col_t0 = 0;
       row_t1 = 0;
       col_t1 = 0;
-
+      int t0,t1;
+      int numFramePairs = nframes * (nframes - 1)/2;
+      
       // accumulate in f32
       float thread_norm[hTile][wTile][bTile];
 
@@ -112,11 +119,13 @@ namespace faiss {
       // compute average across patch for fixed (t0,t1) pair
       //
 #pragma unroll
-      for (int t0 = 0; t0 < maxFrames; ++t0) {
-	if (t0 >= nframes) { continue; }
-#pragma unroll
-	for (int t1 = 0; t1 < maxClusters; ++t1) {
-	  if (t1 >= nclusters) { continue; }
+      for (int t_pair = 0; t_pair < maxFramePairs; ++t_pair) {
+	k2ij(t_pair,nframes,t0,t1);
+	if (t_pair >= numFramePairs)
+	  {
+	    break;
+	  }
+
 	  if (lastTile){
 	    int numH = batchHeight - hStart;
 	    numH = inline_min(hTile,numH);
@@ -154,7 +163,7 @@ namespace faiss {
 
 		      // compute delta 
 		      burst_t0 = burst[fIdx][t0][h_t0][w_t0];
-		      burst_t1 = centroids[fIdx][t1][blk][h_t1][w_t1];
+		      burst_t1 = burst[fIdx][t1][h_t1][w_t1];
 		      delta = Math<T>::sub(burst_t0,burst_t1);
 		      delta = Math<T>::mul(delta,delta);
 
@@ -180,7 +189,7 @@ namespace faiss {
 
 		    // compute delta 
 		    burst_t0 = burst[fIdx][t0][h_t0][w_t0];
-		    burst_t1 = centroids[fIdx][t1][blk][h_t1][w_t1];
+		    burst_t1 = burst[fIdx][t1][h_t1][w_t1];
 		    delta = Math<T>::sub(burst_t0,burst_t1);
 		    delta = Math<T>::mul(delta,delta);
 
@@ -248,7 +257,7 @@ namespace faiss {
 
 		      // compute delta 
 		      burst_t0 = burst[fIdx][t0][h_t0][w_t0];
-		      burst_t1 = centroids[fIdx][t1][blk][h_t1][w_t1];
+		      burst_t1 = burst[fIdx][t1][h_t1][w_t1];
 		      tmp[row_iter][col_iter][blk_iter] = Math<T>::sub(burst_t0,burst_t1);
 		    }
 		  }
@@ -312,7 +321,7 @@ namespace faiss {
 
 		    // compute delta 
 		    burst_t0 = burst[fIdx][t0][h_t0][w_t0];
-		    burst_t1 = centroids[fIdx][t1][blk][h_t1][w_t1];
+		    burst_t1 = burst[fIdx][t1][h_t1][w_t1];
 		    thread_norm[row_iter][col_iter][blk_iter] =
 		      Math<T>::sub(burst_t0,burst_t1);
 		  }
@@ -462,18 +471,19 @@ namespace faiss {
 	  } // warpId == 0
 
 	  __syncthreads(); // sync threads across block
-	}// t1 for-loop
-      } // t0 for-loop
+
+      // 	} // t1 for-loop
+      // } // t0 for-loop
+      } // t_pairs for-loop
     } 
     
 
     template <typename T>
-    void pairwise_distances(Tensor<T, 5, true, int>& dists,
-			    Tensor<T, 4, true, int>& burst,
-			    Tensor<int, 5, true, int>& blocks,
-			    Tensor<T, 5, true, int>& centroids,
-			    int patchsize, float offset,
-			    cudaStream_t stream){
+    void self_pairwise_distances(Tensor<T, 5, true, int>& dists,
+				 Tensor<T, 4, true, int>& burst,
+				 Tensor<int, 5, true, int>& blocks,
+				 int patchsize, float offset,
+				 cudaStream_t stream){
 
 
 
@@ -483,7 +493,7 @@ namespace faiss {
       constexpr int wTile = 1;
       constexpr int bTile = 4;
       constexpr int maxFrames = 25;
-      constexpr int maxClusters = 25;
+      constexpr int maxFramePairs = maxFrames * (maxFrames-1)/2;
 
       // compute numThreads
       int nftrs = burst.getSize(0);
@@ -516,15 +526,13 @@ namespace faiss {
 
       // launch
       if (NormLoop){
-	pairwise_distances_kernel<T,hTile,wTile,bTile,
-	  maxFrames,maxClusters,true>
+	self_pairwise_distances_kernel<T,hTile,wTile,bTile,maxFramePairs,true>
 	  <<<grid,block,smem,stream>>>
-	  (dists,burst,blocks,centroids,patchsize,offset);
+	  (dists,burst,blocks,patchsize,offset);
       }else{
-	pairwise_distances_kernel<T,hTile,wTile,bTile,
-	  maxFrames,maxClusters,false>
+	self_pairwise_distances_kernel<T,hTile,wTile,bTile,maxFramePairs,false>
 	  <<<grid,block,smem,stream>>>
-	  (dists,burst,blocks,centroids,patchsize,offset);
+	  (dists,burst,blocks,patchsize,offset);
       }
       CUDA_TEST_ERROR();
 							    
@@ -537,22 +545,20 @@ namespace faiss {
     // Template Inits
     //
     
-    void pairwise_distances(Tensor<float, 5, true, int>& dists,
-			    Tensor<float, 4, true, int>& burst,
-			    Tensor<int, 5, true, int>& blocks,
-			    Tensor<float, 5, true, int>& centroids,
-			    int patchsize, float offset,
-			    cudaStream_t stream){
-      pairwise_distances<float>(dists,burst,blocks,centroids,patchsize,offset,stream);
+    void self_pairwise_distances(Tensor<float, 5, true, int>& dists,
+				 Tensor<float, 4, true, int>& burst,
+				 Tensor<int, 5, true, int>& blocks,
+				 int patchsize, float offset,
+				 cudaStream_t stream){
+      self_pairwise_distances<float>(dists,burst,blocks,patchsize, offset, stream);
     }
 
-    void pairwise_distances(Tensor<half, 5, true, int>& dists,
+    void self_pairwise_distances(Tensor<half, 5, true, int>& dists,
 			    Tensor<half, 4, true, int>& burst,
 			    Tensor<int, 5, true, int>& blocks,
-			    Tensor<half, 5, true, int>& centroids,
 			    int patchsize, float offset,
 			    cudaStream_t stream){
-      pairwise_distances<half>(dists,burst,blocks,centroids,patchsize, offset, stream);
+      self_pairwise_distances<half>(dists,burst,blocks,patchsize, offset, stream);
     }
 
 

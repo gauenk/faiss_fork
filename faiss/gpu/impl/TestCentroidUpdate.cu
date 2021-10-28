@@ -27,8 +27,8 @@ namespace faiss {
 		       Tensor<T, 4, true, int>& burst,
 		       Tensor<int, 5, true, int>& blocks,
 		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<int, 4, true, int>& clusters,
-		       Tensor<int, 1, true, int>& sizes,
+		       Tensor<uint8_t, 4, true, int>& clusters,
+		       Tensor<uint8_t, 4, true, int>& sizes,
 		       int patchsize, float offset,
 		       cudaStream_t stream){
 	T* one = (T*)malloc(sizeof(T));
@@ -53,8 +53,8 @@ namespace faiss {
 		       Tensor<T, 4, true, int>& burst,
 		       Tensor<int, 5, true, int>& blocks,
 		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<int, 4, true, int>& clusters,
-		       Tensor<int, 1, true, int>& sizes,
+		       Tensor<uint8_t, 4, true, int>& clusters,
+		       Tensor<uint8_t, 4, true, int>& sizes,
 		       int patchsize, float offset,
 		       cudaStream_t stream){
 	bool init_update = false;
@@ -75,8 +75,8 @@ namespace faiss {
 			      Tensor<T, 4, true, int>& burst,
 			      Tensor<int, 5, true, int>& blocks,
 			      Tensor<T, 5, true, int>& centroids,
-			      Tensor<int, 4, true, int>& clusters,
-			      Tensor<int, 1, true, int>& sizes,
+			      Tensor<uint8_t, 4, true, int>& clusters,
+			      Tensor<uint8_t, 4, true, int>& sizes,
 			      int patchsize, float offset,
 			      cudaStream_t stream){
 
@@ -102,8 +102,8 @@ namespace faiss {
 			      Tensor<float, 4, true, int>& burst,
 			      Tensor<int, 5, true, int>& blocks,
 			      Tensor<float, 5, true, int>& centroids,
-			      Tensor<int, 4, true, int>& clusters,
-			      Tensor<int, 1, true, int>& sizes,
+			      Tensor<uint8_t, 4, true, int>& clusters,
+			      Tensor<uint8_t, 4, true, int>& sizes,
 			      int patchsize, float offset,
 			      cudaStream_t stream){
       test_centroid_update<float>(test_case,dists,burst,blocks,centroids,
@@ -115,8 +115,8 @@ namespace faiss {
 			      Tensor<half, 4, true, int>& burst,
 			      Tensor<int, 5, true, int>& blocks,
 			      Tensor<half, 5, true, int>& centroids,
-			      Tensor<int, 4, true, int>& clusters,
-			      Tensor<int, 1, true, int>& sizes,
+			      Tensor<uint8_t, 4, true, int>& clusters,
+			      Tensor<uint8_t, 4, true, int>& sizes,
 			      int patchsize, float offset,
 			      cudaStream_t stream){
       test_centroid_update<half>(test_case,dists,burst,blocks,centroids,

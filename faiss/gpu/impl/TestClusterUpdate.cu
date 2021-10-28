@@ -2,8 +2,8 @@
 #include <faiss/gpu/utils/DeviceUtils.h>
 #include <faiss/gpu/utils/StaticUtils.h>
 #include <faiss/impl/FaissAssert.h>
-#include <faiss/gpu/impl/PairwiseDistances.cuh>
-#include <faiss/gpu/impl/TestPairwiseDistances.cuh>
+#include <faiss/gpu/impl/KmClusterUpdate.cuh>
+#include <faiss/gpu/impl/TestClusterUpdate.cuh>
 #include <faiss/gpu/utils/ConversionOperators.cuh>
 #include <faiss/gpu/utils/DeviceDefs.cuh>
 #include <faiss/gpu/utils/Float16.cuh>
@@ -24,11 +24,9 @@ namespace faiss {
       template<typename T>
       void test_case_0(Tensor<T, 5, true, int>& dists,
 		       Tensor<T, 4, true, int>& burst,
-		       Tensor<int, 5, true, int>& blocks,
-		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<int, 4, true, int>& clusters,
-		       int patchsize, float offset,
-		       cudaStream_t stream){
+		       Tensor<uint8_t, 4, true, int>& clusters,
+		       Tensor<uint8_t, 4, true, int>& sizes,
+		       float offset, cudaStream_t stream){
 	fprintf(stdout,"[clusters.] test_case_0\n");
 	int* one = (int*)malloc(sizeof(int));
 	*one = 1;
@@ -48,14 +46,23 @@ namespace faiss {
       template<typename T>
       void test_case_1(Tensor<T, 5, true, int>& dists,
 		       Tensor<T, 4, true, int>& burst,
-		       Tensor<int, 5, true, int>& blocks,
-		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<int, 4, true, int>& clusters,
-		       int patchsize, float offset,
-		       cudaStream_t stream){
-	fprintf(stdout,"test case 1.\n");
-
+		       Tensor<uint8_t, 4, true, int>& clusters,
+		       Tensor<uint8_t, 4, true, int>& sizes,
+		       float offset, cudaStream_t stream){
+	bool init_update = true;
+	update_clusters(dists, burst, clusters, sizes, init_update, stream);
       }
+
+      template<typename T>
+      void test_case_2(Tensor<T, 5, true, int>& dists,
+		       Tensor<T, 4, true, int>& burst,
+		       Tensor<uint8_t, 4, true, int>& clusters,
+		       Tensor<uint8_t, 4, true, int>& sizes,
+		       float offset, cudaStream_t stream){
+	bool init_update = false;
+	update_clusters(dists, burst, clusters, sizes, init_update, stream);
+      }
+
     
     } // namespace test_clu
 
@@ -67,19 +74,17 @@ namespace faiss {
     void test_cluster_update(int test_case,
 			     Tensor<T, 5, true, int>& dists,
 			     Tensor<T, 4, true, int>& burst,
-			     Tensor<int, 5, true, int>& blocks,
-			     Tensor<T, 5, true, int>& centroids,
-			     Tensor<int, 4, true, int>& clusters,
-			     int patchsize, float offset,
-			     cudaStream_t stream){
+			     Tensor<uint8_t, 4, true, int>& clusters,
+			     Tensor<uint8_t, 4, true, int>& sizes,
+			     float offset, cudaStream_t stream){
 
       fprintf(stdout,"Testing: [centroid update]\n");
       if (test_case == 0){
-	test_clu::test_case_0(dists,burst,blocks,centroids,
-			      clusters,patchsize,offset,stream);
+	test_clu::test_case_0(dists,burst,clusters,sizes,offset,stream);
       }else if (test_case == 1){
-	test_clu::test_case_1(dists,burst,blocks,centroids,
-			      clusters,patchsize,offset,stream);
+	test_clu::test_case_1(dists,burst,clusters,sizes,offset,stream);
+      }else if (test_case == 2){
+	test_clu::test_case_2(dists,burst,clusters,sizes,offset,stream);
       }else{
 	FAISS_THROW_FMT("[TestClusterUpdate.cu]: unimplemented test case %d",test_case);
       }
@@ -93,25 +98,21 @@ namespace faiss {
     void test_cluster_update(int test_case,
 			     Tensor<float, 5, true, int>& dists,
 			     Tensor<float, 4, true, int>& burst,
-			     Tensor<int, 5, true, int>& blocks,
-			     Tensor<float, 5, true, int>& centroids,
-			     Tensor<int, 4, true, int>& clusters,
-			     int patchsize, float offset,
-			     cudaStream_t stream){
-      test_cluster_update<float>(test_case,dists,burst,blocks,centroids,clusters,
-			       patchsize, offset, stream);
+			     Tensor<uint8_t, 4, true, int>& clusters,
+			     Tensor<uint8_t, 4, true, int>& sizes,
+			     float offset, cudaStream_t stream){
+      test_cluster_update<float>(test_case, dists, burst,
+				 clusters, sizes, offset, stream);
     }
 
     void test_cluster_update(int test_case,
 			     Tensor<half, 5, true, int>& dists,
 			     Tensor<half, 4, true, int>& burst,
-			     Tensor<int, 5, true, int>& blocks,
-			     Tensor<half, 5, true, int>& centroids,
-			     Tensor<int, 4, true, int>& clusters,
-			     int patchsize, float offset,
-			     cudaStream_t stream){
-      test_cluster_update<half>(test_case,dists,burst,blocks,centroids,clusters,
-				patchsize, offset, stream);
+			     Tensor<uint8_t, 4, true, int>& clusters,
+			     Tensor<uint8_t, 4, true, int>& sizes,
+			     float offset, cudaStream_t stream){
+      test_cluster_update<half>(test_case, dists, burst,
+				clusters, sizes, offset, stream);
 
     }
 

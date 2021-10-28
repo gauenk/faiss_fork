@@ -14,7 +14,7 @@ from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges
 from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.pwd_utils import PWD_TYPE,pwd_setup
 
-@pytest.mark.pwd
+@pytest.mark.pwd_case0
 @pytest.mark.case0
 def test_case_0():
 
@@ -46,7 +46,7 @@ def test_case_0():
     # -- compute using cpp --
     exec_test(PWD_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               burst,block_gt,search_frames,zinits.search_ranges,
-              zinits.outDists,zinits.outInds,zinits.modes,dists,
+              zinits.outDists,zinits.outInds,zinits.modes,dists,zinits.self_dists,
               zinits.centroids,zinits.clusters,zinits.cluster_sizes,
               zinits.blocks,zinits.ave)
 

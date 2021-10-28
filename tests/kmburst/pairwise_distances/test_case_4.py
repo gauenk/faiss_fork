@@ -16,14 +16,14 @@ from pyutils import save_image,get_img_coords
 
 # -- faiss --
 import faiss
-from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges,compute_pairwise_distance
+from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges,compute_self_pairwise_distance
 from kmb_search.testing.utils import random_blocks
 from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.pwd_utils import pwd_setup,PWD_TYPE
 
 
-@pytest.mark.pwd
-@pytest.mark.case4
+@pytest.mark.pwd_ss
+@pytest.mark.pwd_case4
 def test_case_4():
 
     # -- params --
@@ -53,22 +53,22 @@ def test_case_4():
     search_ranges = jitter_search_ranges(nsearch_xy,t,h,w).to(device)
     search_frames = tiled_search_frames(nfsearch,nsiters,t//2).to(device)
     blocks = mesh_from_ranges(search_ranges,search_frames[0],block_gt,t//2).to(device)
-    dists = torch.zeros_like(zinits.km_dists)
+    dists = torch.zeros_like(zinits.self_dists)
     blocks = random_blocks(t,nblocks,h,w)
 
     # -- compute using cpp --
     start_time = time.perf_counter()
     exec_test(PWD_TYPE,1,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               burst,block_gt,search_frames,zinits.search_ranges,zinits.outDists,
-              zinits.outInds,zinits.modes,dists,zinits.centroids,zinits.clusters,
-              zinits.cluster_sizes,blocks,zinits.ave)
+              zinits.outInds,zinits.modes,zinits.km_dists,dists,zinits.centroids,
+              zinits.clusters,zinits.cluster_sizes,blocks,zinits.ave)
     exec_runtime = time.perf_counter() - start_time
     print("Exec Runtime: %2.3e" % (exec_runtime))
     # print(dists)
     # print(dists_gt)
 
     # -- compute using python --
-    dists_gt = compute_pairwise_distance(burst,blocks,ps)
+    dists_gt = compute_self_pairwise_distance(burst,blocks,ps)
     
     #
     # -- compare results --

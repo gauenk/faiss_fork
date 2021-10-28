@@ -35,6 +35,7 @@ set(FAISS_GPU_SRC
   impl/KmClusterUpdate.cu
   impl/KmCentroidUpdate.cu
   impl/PairwiseDistances.cu
+  impl/SelfPairwiseDistances.cu
   impl/TestKmBurstDistance.cu
   impl/TestPairwiseDistances.cu
   impl/TestClusterUpdate.cu
@@ -156,7 +157,8 @@ set(FAISS_GPU_HEADERS
   impl/KMeans.cuh
   impl/KmClusterUpdate.cuh
   impl/KmCentroidUpdate.cuh
-  impl/PairwiseDistances.cuh
+  impl/PairwiseDistances.cu
+  impl/SelfPairwiseDistances.cuh
   impl/TestKmBurstDistance.cuh
   impl/TestPairwiseDistances.cuh
   impl/TestClusterUpdate.cuh

@@ -27,8 +27,8 @@ namespace faiss {
 		       Tensor<T, 4, true, int>& burst,
 		       Tensor<int, 5, true, int>& blocks,
 		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<int, 4, true, int>& clusters,
-		       Tensor<int, 1, true, int>& cluster_sizes,
+		       Tensor<uint8_t, 4, true, int>& clusters,
+		       Tensor<uint8_t, 4, true, int>& cluster_sizes,
 		       int patchsize, float offset, int kmeansK,
 		       cudaStream_t stream){
 	thrust::fill(thrust::cuda::par.on(stream), centroids.data(),
@@ -44,8 +44,8 @@ namespace faiss {
 		       Tensor<T, 4, true, int>& burst,
 		       Tensor<int, 5, true, int>& blocks,
 		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<int, 4, true, int>& clusters,
-		       Tensor<int, 1, true, int>& cluster_sizes,
+		       Tensor<uint8_t, 4, true, int>& clusters,
+		       Tensor<uint8_t, 4, true, int>& cluster_sizes,
 		       int patchsize, float offset, int kmeansK,
 		       cudaStream_t stream){
 	kmeans_clustering(dists,burst,blocks,centroids,
@@ -65,8 +65,8 @@ namespace faiss {
 		     Tensor<T, 4, true, int>& burst,
 		     Tensor<int, 5, true, int>& blocks,
 		     Tensor<T, 5, true, int>& centroids,
-		     Tensor<int, 4, true, int>& clusters,
-		     Tensor<int, 1, true, int>& cluster_sizes,
+		     Tensor<uint8_t, 4, true, int>& clusters,
+		     Tensor<uint8_t, 4, true, int>& cluster_sizes,
 		     int patchsize, float offset, int kmeansK,
 		     cudaStream_t stream){
 
@@ -92,8 +92,8 @@ namespace faiss {
 		     Tensor<float, 4, true, int>& burst,
 		     Tensor<int, 5, true, int>& blocks,
 		     Tensor<float, 5, true, int>& centroids,
-		     Tensor<int, 4, true, int>& clusters,
-		     Tensor<int, 1, true, int>& cluster_sizes,
+		     Tensor<uint8_t, 4, true, int>& clusters,
+		     Tensor<uint8_t, 4, true, int>& cluster_sizes,
 		     int patchsize, float offset, int kmeansK,
 		     cudaStream_t stream){
       test_kmeans<float>(test_case,dists,burst,blocks,centroids,clusters,
@@ -105,8 +105,8 @@ namespace faiss {
 		     Tensor<half, 4, true, int>& burst,
 		     Tensor<int, 5, true, int>& blocks,
 		     Tensor<half, 5, true, int>& centroids,
-		     Tensor<int, 4, true, int>& clusters,
-		     Tensor<int, 1, true, int>& cluster_sizes,
+		     Tensor<uint8_t, 4, true, int>& clusters,
+		     Tensor<uint8_t, 4, true, int>& cluster_sizes,
 		     int patchsize, float offset, int kmeansK,
 		     cudaStream_t stream){
       test_kmeans<half>(test_case,dists,burst,blocks,centroids,clusters,
