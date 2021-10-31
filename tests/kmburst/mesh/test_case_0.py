@@ -14,6 +14,7 @@ from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.mesh_utils import MESH_TYPE,mesh_setup
 
 @pytest.mark.case0
+@pytest.mark.mesh_case0
 def test_case_0():
 
     # -- params --
@@ -43,8 +44,9 @@ def test_case_0():
     # -- execute test --
     exec_test(MESH_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               burst,block_gt,search_frames,zinits.search_ranges,
-              zinits.outDists,zinits.outInds,zinits.modes,zinits.km_dists,
-              zinits.centroids,zinits.clusters,zinits.cluster_sizes,blocks,zinits.ave)
+              zinits.outDists,zinits.outInds,zinits.modes,zinits.modes3d,
+              zinits.km_dists,zinits.self_dists,zinits.centroids,zinits.clusters,
+              zinits.cluster_sizes,blocks,zinits.ave,zinits.vals)
 
     # -- compute using python --
     blocks_gt = torch.ones_like(zinits.blocks)

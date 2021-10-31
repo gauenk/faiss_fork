@@ -19,6 +19,7 @@
 namespace faiss {
   namespace gpu {
 
+#define inline_abs(a) ( ((a) < 0) ? (-a) : (a) )
 #define inline_min(a, b) ( (a) < (b) ? (a) : (b) )
 
     __forceinline__ __device__ int hw_boundary(int hw, int max){
@@ -432,6 +433,20 @@ namespace faiss {
 	      }
 	    }
 
+	    // apply offset & absolute value
+#pragma unroll
+	    for (int row_i = 0; row_i < hTile; ++row_i) {
+#pragma unroll
+	      for (int col_i = 0; col_i < wTile; ++col_i) {
+#pragma unroll
+		for (int blk_i = 0; blk_i < bTile; ++blk_i) {
+		  thread_norm[row_i][col_i][blk_i] =
+		    Math<T>::sub(thread_norm[row_i][col_i][blk_i],offset);
+		  thread_norm[row_i][col_i][blk_i] =
+		    inline_abs(thread_norm[row_i][col_i][blk_i]);
+		}
+	      }
+	    }
 
 	    // Write out answer
 	    if (laneId == 0) {

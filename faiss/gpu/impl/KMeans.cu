@@ -40,6 +40,7 @@ namespace faiss {
       update_clusters(dists,burst,clusters,sizes,init_update,stream);
 
       // update centroids (means) given the initial cluster assignments
+      init_update = false;
       update_centroids(dists,burst,blocks,centroids,clusters,
 		       sizes,init_update,stream);
       

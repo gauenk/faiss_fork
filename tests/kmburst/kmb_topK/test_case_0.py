@@ -14,6 +14,7 @@ from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.kmbtopk_utils import KMBTOPK_TYPE,kmbtopk_setup
 
 @pytest.mark.case0
+@pytest.mark.kmbtopk_case0
 def test_case_0():
 
     # -- params --
@@ -50,14 +51,19 @@ def test_case_0():
     outInds = torch.zeros_like(zinits.outInds)
     
     # -- execute test --
-    exec_test(KMBTOPK_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,
-              std,burst,block_gt,search_frames,zinits.search_ranges,
-              outDists,outInds,modes,dists,centroids,clusters,
-              zinits.cluster_sizes,blocks,ave)
+    exec_test(KMBTOPK_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
+              kmeansK,std,burst,block_gt,search_frames,search_ranges,
+              outDists,outInds,zinits.modes,zinits.modes3d,zinits.km_dists,
+              zinits.self_dists,centroids,zinits.clusters,
+              zinits.cluster_sizes,blocks,zinits.ave,zinits.vals)
 
     # -- compute using python --
     outInds_gt = torch.ones_like(zinits.outInds)
+    outDists_gt = torch.ones_like(zinits.outDists)
+
     
     # -- compare results --
     delta = torch.sum(torch.abs(outInds - outInds_gt)).item()
+    assert delta < 1e-8, "Difference must be smaller than tolerance."
+    delta = torch.sum(torch.abs(outDists - outDists_gt)).item()
     assert delta < 1e-8, "Difference must be smaller than tolerance."

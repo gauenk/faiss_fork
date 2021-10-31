@@ -52,7 +52,10 @@ __global__ void runKmBurstL2NormKernel(
         Tensor<int, 5, true, int> blocks,
         Tensor<float, 3, true, int> vals,
 	int patchsize, int nblocks, T TVecMax) {
-    extern __shared__ char smemByte[]; // #warps * RowTileSize * ColTileSize * BlockTileSize elements
+  // #warps * RowTileSize * ColTileSize * BlockTileSize elements
+  extern __shared__ char smemByte[]; 
+
+  
     
 }
 

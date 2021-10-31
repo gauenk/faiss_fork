@@ -18,7 +18,7 @@ namespace faiss {
 			  Tensor<float, 5, true, int>& centroids,
 			  Tensor<uint8_t, 4, true, int>& clusters,
 			  Tensor<float, 4, true, int>& ave,
-			  Tensor<float, 1, true, int>& modes,
+			  Tensor<float, 4, true, int>& modes,
 			  int patchsize, float offset,
 			  cudaStream_t stream);
 
@@ -29,7 +29,7 @@ namespace faiss {
 			  Tensor<half, 5, true, int>& centroids,
 			  Tensor<uint8_t, 4, true, int>& clusters,
 			  Tensor<half, 4, true, int>& ave,
-			  Tensor<float, 1, true, int>& modes,
+			  Tensor<half, 4, true, int>& modes,
 			  int patchsize, float offset,
 			  cudaStream_t stream);
 

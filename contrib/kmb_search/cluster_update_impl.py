@@ -62,17 +62,14 @@ def update_clusters_numba(dists,clusters,sizes):
 # ------------------------------------------------------------------------
 # ------------------------------------------------------------------------
 
-def init_clusters(dists):
+def init_clusters(t,tK,s,h,w,device='cuda:0'):
 
     # -- unpack --
-    device = dists.device
-    t,tK,s,h,w = dists.shape
     clusters = np.zeros((t,s,h,w)).astype(np.uint8)
     sizes = np.zeros((tK,s,h,w)).astype(np.uint8)
     
     # -- numba --
-    dists = dists.cpu().numpy()
-    init_clusters_numba(dists,clusters,sizes)
+    init_clusters_numba(clusters,sizes)
 
     # -- to torch --
     clusters = torch.ByteTensor(clusters).to(device)
@@ -81,8 +78,9 @@ def init_clusters(dists):
     return clusters,sizes
 
 @njit
-def init_clusters_numba(dists,clusters,sizes):
-    t,tK,s,h,w = dists.shape
+def init_clusters_numba(clusters,sizes):
+    t,s,h,w = clusters.shape
+    tK = sizes.shape[0]
     for si in prange(s):
         for hi in prange(h):
             for wi in prange(w):

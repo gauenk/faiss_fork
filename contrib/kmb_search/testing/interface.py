@@ -55,8 +55,9 @@ def init_empty_exec(device = 'cuda:0'):
     exec_test(0,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               zinits.burst,zinits.init_blocks,zinits.search_frames,
               zinits.search_ranges,zinits.outDists,zinits.outInds,
-              zinits.modes,zinits.km_dists,zinits.self_dists,zinits.centroids,
-              zinits.clusters,zinits.cluster_sizes,zinits.blocks,zinits.ave)
+              zinits.modes,zinits.modes3d,zinits.km_dists,
+              zinits.self_dists,zinits.centroids,zinits.clusters,
+              zinits.cluster_sizes,zinits.blocks,zinits.ave,zinits.vals)
 
 
 def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,device):
@@ -68,13 +69,15 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
 
     # -- create zero tensors --
     dtype = torch.float
+    if dtype != torch.float: print("WARNING: i don't convert Python to half.")
     burst = torch.zeros(c,t,h,w).type(dtype).to(device)
-    init_blocks = torch.zeros(2,t,h,w).type(torch.int).to(device)
+    init_blocks = torch.zeros(t,h,w).type(torch.int).to(device)
     search_frames = torch.zeros(nsiters,nfsearch).type(torch.int).to(device)
     search_ranges = torch.zeros(2,t,nbsearch,h,w).type(torch.int).to(device)
     outDists = torch.zeros(k,h,w).type(torch.float).to(device)
     outInds = torch.zeros(2,t,k,h,w).type(torch.int).to(device)
-    modes = torch.zeros(10).type(torch.float).to(device)
+    modes = torch.zeros(kmeansK,nblocks,h,w).type(torch.float).to(device)
+    modes3d = torch.zeros(nblocks,h,w).type(torch.float).to(device)
     blocks = torch.zeros(2,t,nblocks,h,w).type(torch.int).to(device)
     km_dists = torch.zeros(t,kmeansK,nblocks,h,w).type(dtype).to(device)
     self_dists = torch.zeros(t,t,nblocks,h,w).type(dtype).to(device)
@@ -82,6 +85,7 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
     clusters = torch.zeros(t,nblocks,h,w).type(torch.uint8).to(device)
     cluster_sizes = torch.zeros(kmeansK,nblocks,h,w).type(torch.uint8).to(device)
     ave = torch.zeros(c,nblocks,h,w).type(torch.float).to(device)
+    vals = torch.zeros(nblocks,h,w).type(torch.float).to(device)
 
     # -- dict output --
     rdict = edict()
@@ -93,6 +97,7 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
     rdict.outDists = outDists
     rdict.outInds = outInds
     rdict.modes = modes
+    rdict.modes3d = modes3d
     rdict.blocks = blocks
     rdict.km_dists = km_dists
     rdict.self_dists = self_dists
@@ -100,6 +105,7 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
     rdict.clusters = clusters
     rdict.cluster_sizes = cluster_sizes
     rdict.ave = ave
+    rdict.vals = vals
 
     # -- include shapes --
     rdict.shapes = edict()
@@ -111,8 +117,8 @@ def init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,nsiters,dev
 
 def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
               kmeansK,std,burst,init_blocks,search_frames,search_ranges,
-              outDists,outInds,modes,km_dists,self_dists,centroids,clusters,
-              cluster_sizes,blocks,ave):
+              outDists,outInds,modes,modes3d,km_dists,self_dists,centroids,clusters,
+              cluster_sizes,blocks,ave,vals):
               
     # -- contiguous tensors --
     burst = burst.contiguous()
@@ -122,6 +128,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     outDists = outDists.contiguous()
     outInds = outInds.contiguous()
     modes = modes.contiguous()
+    modes3d = modes3d.contiguous()
     km_dists = km_dists.contiguous()
     self_dists = self_dists.contiguous()
     centroids = centroids.contiguous()
@@ -129,6 +136,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     blocks = blocks.contiguous()
     ave = ave.contiguous()
     cluster_sizes = cluster_sizes.contiguous()
+    vals = vals.contiguous()
 
     # -- extract swig ptrs --
     burst_ptr,dtype = get_swig_ptr(burst,rtype=True)
@@ -138,6 +146,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     outDists_ptr = get_swig_ptr(outDists)
     outInds_ptr = get_swig_ptr(outInds)
     modes_ptr = get_swig_ptr(modes)
+    modes3d_ptr = get_swig_ptr(modes3d)
     km_dists_ptr = get_swig_ptr(km_dists)
     self_dists_ptr = get_swig_ptr(self_dists)
     centroids_ptr = get_swig_ptr(centroids)
@@ -145,6 +154,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     blocks_ptr = get_swig_ptr(blocks)
     ave_ptr = get_swig_ptr(ave)
     cluster_sizes_ptr = get_swig_ptr(cluster_sizes)
+    vals_ptr = get_swig_ptr(vals)
 
     # -- create faiss GPU resource --
     res = faiss.StandardGpuResources()
@@ -170,9 +180,11 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     args.burst = burst_ptr
     args.init_blocks = init_blocks_ptr
     args.search_ranges = search_ranges_ptr
+    args.search_frames = search_frames_ptr
     args.outDistances = outDists_ptr
     args.outIndices = outInds_ptr
     args.modes = modes_ptr
+    args.modes3d = modes3d_ptr
     args.km_dists = km_dists_ptr
     args.self_dists = self_dists_ptr
     args.centroids = centroids_ptr
@@ -180,6 +192,7 @@ def exec_test(test_type,test_case,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
     args.cluster_sizes = cluster_sizes_ptr
     args.blocks = blocks_ptr
     args.ave = ave_ptr
+    args.vals = vals_ptr
 
     # -- choose to block with or without stream --
     with using_stream(res):

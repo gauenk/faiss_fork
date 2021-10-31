@@ -39,8 +39,10 @@ namespace faiss {
 			Tensor<float, 5, true, int>& centroids,
 			Tensor<uint8_t, 4, true, int>& clusters,
 			Tensor<uint8_t, 4, true, int>& cluster_sizes,
-			Tensor<float, 1, true, int>& modes,
-			Tensor<float, 4, true, int>& ave);
+			Tensor<float, 4, true, int>& modes,
+			Tensor<float, 3, true, int>& modes3d,
+			Tensor<float, 4, true, int>& ave,
+			Tensor<float, 3, true, int>& vals);
     
     void runKmBurstTest(GpuResources* resources,
 			cudaStream_t stream,
@@ -69,8 +71,10 @@ namespace faiss {
 			Tensor<half, 5, true, int>& centroids,
 			Tensor<uint8_t, 4, true, int>& clusters,
 			Tensor<uint8_t, 4, true, int>& cluster_sizes,
-			Tensor<float, 1, true, int>& modes,
-			Tensor<half, 4, true, int>& ave);
+			Tensor<half, 4, true, int>& modes,
+			Tensor<half, 3, true, int>& modes3d,
+			Tensor<half, 4, true, int>& ave,
+			Tensor<float, 3, true, int>& vals);
 
 
 
@@ -103,8 +107,10 @@ namespace faiss {
 			     Tensor<T, 5, true, int>& centroids,
 			     Tensor<uint8_t, 4, true, int>& clusters,
 			     Tensor<uint8_t, 4, true, int>& cluster_sizes,
-			     Tensor<float, 1, true, int>& modes,
-			     Tensor<T, 4, true, int>& ave){
+			     Tensor<T, 4, true, int>& modes,
+			     Tensor<T, 3, true, int>& modes3d,
+			     Tensor<T, 4, true, int>& ave,
+			     Tensor<float, 3, true, int>& vals){
       // setup device
       DeviceScope ds(device);
       // We are guaranteed that all data arguments are resident on our preferred
@@ -114,7 +120,7 @@ namespace faiss {
 		     init_blocks,test_type,test_case,kmeansK,nsiters,k,t,h,w,
 		     c,ps,nbsearch,nfsearch,std,outDistances,outIndices,
 		     dists,self_dists,blocks,centroids,clusters,
-		     cluster_sizes,modes,ave);
+		     cluster_sizes,modes,modes3d,ave,vals);
     }
     
   }

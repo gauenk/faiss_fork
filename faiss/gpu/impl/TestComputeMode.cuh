@@ -17,8 +17,9 @@ namespace faiss {
 			   Tensor<int, 5, true, int>& blocks,
 			   Tensor<float, 5, true, int>& centroids,
 			   Tensor<uint8_t, 4, true, int>& clusters,
-			   Tensor<float, 1, true, int>& modes,
-			   int patchsize, float offset,
+			   Tensor<uint8_t, 4, true, int>& sizes,
+			   Tensor<float, 4, true, int>& modes,
+			   int patchsize, float offset, float std,
 			   cudaStream_t stream);
 
     void test_compute_mode(int test_case,
@@ -27,8 +28,9 @@ namespace faiss {
 			   Tensor<int, 5, true, int>& blocks,
 			   Tensor<half, 5, true, int>& centroids,
 			   Tensor<uint8_t, 4, true, int>& clusters,
-			   Tensor<float, 1, true, int>& modes,
-			   int patchsize, float offset,
+			   Tensor<uint8_t, 4, true, int>& sizes,
+			   Tensor<half, 4, true, int>& modes,
+			   int patchsize, float offset, float std,
 			   cudaStream_t stream);
 
   }

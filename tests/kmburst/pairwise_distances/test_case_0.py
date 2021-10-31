@@ -46,9 +46,9 @@ def test_case_0():
     # -- compute using cpp --
     exec_test(PWD_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               burst,block_gt,search_frames,zinits.search_ranges,
-              zinits.outDists,zinits.outInds,zinits.modes,dists,zinits.self_dists,
-              zinits.centroids,zinits.clusters,zinits.cluster_sizes,
-              zinits.blocks,zinits.ave)
+              zinits.outDists,zinits.outInds,zinits.modes,zinits.modes3d,
+              dists,zinits.self_dists,zinits.centroids,zinits.clusters,
+              zinits.cluster_sizes,zinits.blocks,zinits.ave,zinits.vals)
 
     # -- compute using python --
     dists_gt = torch.ones_like(dists)

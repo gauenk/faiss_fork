@@ -40,9 +40,12 @@ namespace gpu {
     int nframes = sranges.getSize(1);
     int nblocks = blocks.getSize(2);
     int nsearch = sranges.getSize(2);
+    int nfsearch = search_frames.getSize(1);
+    bool is_ref = false;
     bool is_search = false;
-    int div,sidx;
+    int div,sidx,sframe;
     int num_frames_searched;
+    int ref = nframes/2;
     
     // run for height, width, and all frames
     for (int hidx = 0; hidx < sranges.getSize(3); ++hidx){
@@ -52,12 +55,20 @@ namespace gpu {
 
 	  // check if "t in search_frames[iter]" ?
 	  is_search = false;
-	  for(int t_p = 0; t_p < search_frames.getSize(1); ++t_p){
-	    if (search_frames[iter][t_p] == t){
+	  for(int t_p = 0; t_p < nfsearch; ++t_p){
+	    sframe = search_frames[iter][t_p];
+	    if (sframe == t){
 	      is_search = true;
 	    }
 	  }
-	
+
+	  // check if ref frame
+	  is_ref = t == ref;
+
+	  // we don't search the reference
+	  // is_search = is_search && !is_ref;
+	  if(is_search && is_ref){ is_search = false; }
+	  
 	  // get index from search range
 	  if (is_search){
 	    if (num_frames_searched == 0){
@@ -74,6 +85,7 @@ namespace gpu {
 	  // copy ranges to mesh
 	  blocks[0][t][bidx][hidx][widx] = (int)sranges[0][t][sidx][hidx][widx];
 	  blocks[1][t][bidx][hidx][widx] = (int)sranges[1][t][sidx][hidx][widx];
+	  // blocks[1][t][bidx][hidx][widx] = is_search;
 	  // blocks[0][t][bidx][hidx][widx] = t;
 	  // blocks[1][t][bidx][hidx][widx] = sidx;
 

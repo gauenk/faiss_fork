@@ -27,7 +27,7 @@ def meshgrid_per_pixel_cuda(sranges,smesh,refG):
                     sG = (s // div) % nsearch_per_group
                     gmod += 1
                 else:
-                    sG = 0
+                    sG = 0#earch_per_group//2
                 smesh[s,hIdx,wIdx,g,0] = sranges[sG,hIdx,wIdx,g,0]
                 smesh[s,hIdx,wIdx,g,1] = sranges[sG,hIdx,wIdx,g,1]
             # if g != refG:

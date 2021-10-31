@@ -64,10 +64,8 @@ def test_case_1():
     print(cluster_sizes)
 
     # -- compute using python --
-    clusters_gt,csizes_gt = init_clusters(dists)
-    # clusters_gt,csizes_gt = update_clusters(dists)
+    clusters_gt,csizes_gt = init_clusters(t,kmeansK,nblocks,h,w,device=device)
     print(csizes_gt)
-
     
     # -- compare results --
     delta = torch.sum(torch.abs(clusters - clusters_gt)).item()

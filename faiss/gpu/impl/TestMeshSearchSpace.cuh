@@ -12,21 +12,10 @@ namespace faiss {
     //
     
     void test_mesh_search_space(int test_case,
-				Tensor<float, 5, true, int>& dists,
-				Tensor<float, 4, true, int>& burst,
 				Tensor<int, 5, true, int>& blocks,
-				Tensor<float, 5, true, int>& centroids,
-				Tensor<uint8_t, 4, true, int>& clusters,
-				int patchsize, float offset,
-				cudaStream_t stream);
-
-    void test_mesh_search_space(int test_case,
-				Tensor<half, 5, true, int>& dists,
-				Tensor<half, 4, true, int>& burst,
-				Tensor<int, 5, true, int>& blocks,
-				Tensor<half, 5, true, int>& centroids,
-				Tensor<uint8_t, 4, true, int>& clusters,
-				int patchsize, float offset,
+				Tensor<int, 3, true>& init_blocks,
+				Tensor<int, 5, true>& search_ranges,
+				Tensor<int, 2, true>& search_frames,
 				cudaStream_t stream);
 
   }

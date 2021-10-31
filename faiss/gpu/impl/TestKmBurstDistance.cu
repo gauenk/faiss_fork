@@ -14,6 +14,7 @@
 #include <faiss/gpu/impl/L2Norm.cuh>
 #include <faiss/gpu/impl/BurstNnfL2Norm.cuh>
 #include <faiss/gpu/impl/L2Select.cuh>
+#include <faiss/gpu/impl/KmBurstTopK.cuh>
 #include <faiss/gpu/utils/BurstBlockSelectKernel.cuh>
 #include <faiss/gpu/utils/DeviceDefs.cuh>
 #include <faiss/gpu/utils/Limits.cuh>
@@ -70,8 +71,10 @@ namespace faiss {
 			Tensor<T, 5, true, int>& centroids,
 			Tensor<uint8_t, 4, true, int>& clusters,
 			Tensor<uint8_t, 4, true, int>& cluster_sizes,
-			Tensor<float, 1, true, int>& modes,
-			Tensor<T, 4, true, int>& ave){
+			Tensor<T, 4, true, int>& modes,
+			Tensor<T, 3, true, int>& modes3d,
+			Tensor<T, 4, true, int>& ave,
+			Tensor<float, 3, true, int>& vals){
 
       // Select the test here.
       fprintf(stdout,"\nrunKmBurstTest :D\n");
@@ -86,14 +89,14 @@ namespace faiss {
 	test_centroid_update(test_case,dists,burst,blocks,centroids,
 			     clusters,cluster_sizes,ps,offset,stream);
       }else if(test_type == Ranges2Blocks){
-	test_mesh_search_space(test_case,dists,burst,blocks,centroids,
-			       clusters,ps,offset,stream);
+	test_mesh_search_space(test_case,blocks,init_blocks,
+			       search_ranges,search_frames,stream);
       }else if(test_type == KMeansCase){
 	test_kmeans(test_case,dists,burst,blocks,centroids,
 		    clusters,cluster_sizes,ps,offset,kmeansK,stream);
       }else if(test_type == ComputeModeCase){
 	test_compute_mode(test_case,dists,burst,blocks,centroids,
-			  clusters,modes,ps,offset,stream);
+			  clusters,cluster_sizes,modes,ps,offset,std,stream);
       }else if(test_type == KmBurstAveCase){
 	test_kmburst_ave(test_case,dists,burst,blocks,centroids,
 			 clusters,ave,modes,ps,offset,stream);
@@ -102,7 +105,7 @@ namespace faiss {
 			    centroids,clusters,ave,modes,ps,offset,stream);
       }else if(test_type == KmBurstTopKCase){
 	test_kmburst_topK(test_case,outDistances,outIndices,burst,blocks,
-			  centroids,clusters,ave,modes,ps,offset,stream);
+			  centroids,clusters,ave,modes,modes3d,vals,ps,offset,stream);
       }else{
 	FAISS_THROW_FMT("[TestKmBurstDistance]: unimplemented test %d", test_type);
       }
@@ -136,15 +139,17 @@ namespace faiss {
 			Tensor<float, 5, true, int>& centroids,
 			Tensor<uint8_t, 4, true, int>& clusters,
 			Tensor<uint8_t, 4, true, int>& cluster_sizes,
-			Tensor<float, 1, true, int>& modes,
-			Tensor<float, 4, true, int>& ave){
+			Tensor<float, 4, true, int>& modes,
+			Tensor<float, 3, true, int>& modes3d,
+			Tensor<float, 4, true, int>& ave,
+			Tensor<float, 3, true, int>& vals){
       runKmBurstTest<float>(resources,stream,burst,search_ranges,
 			    search_frames,init_blocks,test_type,
 			    test_case,kmeansK,nsiters,k,t,h,w,c,ps,
 			    nbsearch,nfsearch,std,
 			    outDistances,outIndices,dists,self_dists,
 			    blocks,centroids,clusters,
-			    cluster_sizes,modes,ave);
+			    cluster_sizes,modes,modes3d,ave,vals);
     }
     
     void runKmBurstTest(GpuResources* resources,
@@ -174,15 +179,17 @@ namespace faiss {
 			Tensor<half, 5, true, int>& centroids,
 			Tensor<uint8_t, 4, true, int>& clusters,
 			Tensor<uint8_t, 4, true, int>& cluster_sizes,
-			Tensor<float, 1, true, int>& modes,
-			Tensor<half, 4, true, int>& ave){
+			Tensor<half, 4, true, int>& modes,
+			Tensor<half, 3, true, int>& modes3d,
+			Tensor<half, 4, true, int>& ave,
+			Tensor<float, 3, true, int>& vals){
       runKmBurstTest<half>(resources,stream,burst,search_ranges,
 			   search_frames,init_blocks,test_type,
 			   test_case,kmeansK,nsiters,k,t,h,w,c,ps,
 			   nbsearch,nfsearch,std,
 			   outDistances,outIndices,dists,self_dists,
 			   blocks,centroids,clusters,
-			   cluster_sizes,modes,ave);
+			   cluster_sizes,modes,modes3d,ave,vals);
     }
 
   }

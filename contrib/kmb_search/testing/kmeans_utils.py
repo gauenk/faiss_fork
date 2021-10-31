@@ -22,13 +22,16 @@ from bp_search import create_mesh_from_ranges
 # -- faiss/contrib --
 from kmb_search.testing.utils import set_seed
 
-def kmeans_setup(k,t,h,w,c,ps,std,device):
+def kmeans_setup(k,t,h,w,c,ps,std,device,seed):
 
     # ---------------------------
     #
     #        Init Vars
     #
     # ---------------------------
+
+    # -- set seed --
+    set_seed(seed)
 
     # -- apply dynamic xform --
     dynamic_info = edict()

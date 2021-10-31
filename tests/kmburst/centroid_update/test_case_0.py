@@ -13,7 +13,8 @@ from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges
 from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.centroid_update_utils import CENTROID_TYPE,centroid_setup
 
-@pytest.mark.centroid
+@pytest.mark.centu
+@pytest.mark.centu_case0
 @pytest.mark.case0
 def test_case_0():
 

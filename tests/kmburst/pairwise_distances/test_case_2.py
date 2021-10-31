@@ -60,8 +60,9 @@ def test_case_2():
     start_time = time.perf_counter()
     exec_test(PWD_TYPE,1,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               burst,block_gt,search_frames,zinits.search_ranges,zinits.outDists,
-              zinits.outInds,zinits.modes,zinits.km_dists,dists,zinits.centroids,
-              zinits.clusters,zinits.cluster_sizes,blocks,zinits.ave)
+              zinits.outInds,zinits.modes,zinits.modes3d,zinits.km_dists,
+              dists,zinits.centroids,zinits.clusters,zinits.cluster_sizes,
+              blocks,zinits.ave,zinits.vals)
     exec_runtime = time.perf_counter() - start_time
     print("Exec Runtime: %2.3e" % (exec_runtime))
     # print(dists)

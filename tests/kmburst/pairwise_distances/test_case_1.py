@@ -55,8 +55,9 @@ def test_case_1():
     # -- compute using cpp --
     exec_test(PWD_TYPE,1,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               burst,block_gt,search_frames,zinits.search_ranges,zinits.outDists,
-              zinits.outInds,zinits.modes,zinits.km_dists,dists,zinits.centroids,
-              zinits.clusters,zinits.cluster_sizes,blocks,zinits.ave)
+              zinits.outInds,zinits.modes,zinits.modes3d,zinits.km_dists,
+              dists,zinits.centroids,zinits.clusters,zinits.cluster_sizes,
+              blocks,zinits.ave,zinits.vals)
 
     # -- compute using python --
     dists_gt = compute_self_pairwise_distance(burst,blocks,ps)

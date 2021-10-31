@@ -2,9 +2,7 @@
 #include <faiss/gpu/utils/DeviceUtils.h>
 #include <faiss/gpu/utils/StaticUtils.h>
 #include <faiss/impl/FaissAssert.h>
-
-// TODO: add KmBurstTopK.cuh 
-
+#include <faiss/gpu/impl/KmBurstTopK.cuh>
 #include <faiss/gpu/impl/TestKmBurstTopK.cuh>
 #include <faiss/gpu/utils/ConversionOperators.cuh>
 #include <faiss/gpu/utils/DeviceDefs.cuh>
@@ -32,7 +30,8 @@ namespace faiss {
 		       Tensor<T, 5, true, int>& centroids,
 		       Tensor<uint8_t, 4, true, int>& clusters,
 		       Tensor<T, 4, true, int>& ave,
-		       Tensor<float, 1, true, int>& modes,
+		       Tensor<T, 4, true, int>& modes,
+		       Tensor<float, 3, true, int>& vals,
 		       int patchsize, float offset,
 		       cudaStream_t stream){
 	thrust::fill(thrust::cuda::par.on(stream),
@@ -49,10 +48,12 @@ namespace faiss {
 		       Tensor<T, 5, true, int>& centroids,
 		       Tensor<uint8_t, 4, true, int>& clusters,
 		       Tensor<T, 4, true, int>& ave,
-		       Tensor<float, 1, true, int>& modes,
+		       Tensor<T, 4, true, int>& modes,
+		       Tensor<T, 3, true, int>& modes3d,
+		       Tensor<float, 3, true, int>& vals,
 		       int patchsize, float offset,
 		       cudaStream_t stream){
-	fprintf(stdout,"test_case_1.\n");
+	kmb_topK(vals,blocks,indices,dists,modes3d,stream);
       }
 
     } // namespace test_kmb_topK
@@ -70,17 +71,19 @@ namespace faiss {
 			   Tensor<T, 5, true, int>& centroids,
 			   Tensor<uint8_t, 4, true, int>& clusters,
 			   Tensor<T, 4, true, int>& ave,
-			   Tensor<float, 1, true, int>& modes,
+			   Tensor<T, 4, true, int>& modes,
+			   Tensor<T, 3, true, int>& modes3d,
+			   Tensor<float, 3, true, int>& vals,
 			   int patchsize, float offset,
 			   cudaStream_t stream){
 
       fprintf(stdout,"Testing: [km burst topK]\n");
       if (test_case == 0){
 	test_kmb_topK::test_case_0<T>(dists,indices,burst,blocks,centroids,clusters,
-				      ave,modes,patchsize,offset,stream);
+				      ave,modes,vals,patchsize,offset,stream);
       }else if (test_case == 1){
 	test_kmb_topK::test_case_1<T>(dists,indices,burst,blocks,centroids,clusters,
-				      ave,modes,patchsize,offset,stream);
+				      ave,modes,modes3d,vals,patchsize,offset,stream);
       }else{
 	FAISS_THROW_FMT("[TestKmBurstTopK.cu]: unimplemented test case %d",test_case);
       }
@@ -99,11 +102,14 @@ namespace faiss {
 			   Tensor<float, 5, true, int>& centroids,
 			   Tensor<uint8_t, 4, true, int>& clusters,
 			   Tensor<float, 4, true, int>& ave,
-			   Tensor<float, 1, true, int>& modes,
+			   Tensor<float, 4, true, int>& modes,
+			   Tensor<float, 3, true, int>& modes3d,
+			   Tensor<float, 3, true, int>& vals,
 			   int patchsize, float offset,
 			   cudaStream_t stream){
-      test_kmburst_topK<float>(test_case,dists,indices,burst,blocks,centroids, clusters,
-			       ave, modes, patchsize, offset, stream);
+      test_kmburst_topK<float>(test_case,dists,indices,burst,
+			       blocks,centroids, clusters,
+			       ave, modes, modes3d, vals, patchsize, offset, stream);
     }
 
     void test_kmburst_topK(int test_case,
@@ -114,11 +120,14 @@ namespace faiss {
 			   Tensor<half, 5, true, int>& centroids,
 			   Tensor<uint8_t, 4, true, int>& clusters,
 			   Tensor<half, 4, true, int>& ave,
-			   Tensor<float, 1, true, int>& modes,
+			   Tensor<half, 4, true, int>& modes,
+			   Tensor<half, 3, true, int>& modes3d,
+			   Tensor<float, 3, true, int>& vals,
 			   int patchsize, float offset,
 			   cudaStream_t stream){
-      test_kmburst_topK<half>(test_case,dists,indices,burst,blocks,centroids, clusters,
-			      ave, modes, patchsize, offset, stream);
+      test_kmburst_topK<half>(test_case,dists,indices,burst,
+			      blocks,centroids, clusters,
+			      ave, modes, modes3d, vals, patchsize, offset, stream);
 
     }
 

@@ -28,7 +28,7 @@ th_pad = torchvision.transforms.functional.pad
 # ------------------------------------------------------------------------
 
 
-def compute_pairwise_distance(burst,blocks,centroids,ps):
+def compute_pairwise_distance(burst,blocks,centroids,ps,offset):
     # -- shapes and init --
     device = burst.device
     c,t,h,w = burst.shape
@@ -45,11 +45,7 @@ def compute_pairwise_distance(burst,blocks,centroids,ps):
     centroids = centroids.cpu().numpy()
 
     # -- run numba --
-    compute_pairwise_distance_numba(dists,burst,blocks,centroids,ps)
-
-    # -- normalize --
-    Z = ps*ps*c
-    dists = dists/Z
+    compute_pairwise_distance_numba(dists,burst,blocks,centroids,ps,offset)
 
     # -- to torch --
     dists = torch.FloatTensor(dists).to(device)
@@ -57,7 +53,7 @@ def compute_pairwise_distance(burst,blocks,centroids,ps):
     return dists
 
 @njit
-def compute_pairwise_distance_numba(dists,burst,blocks,centroids,ps):
+def compute_pairwise_distance_numba(dists,burst,blocks,centroids,ps,offset):
 
     def ps_select(start,limit,ps):
         sel = np.arange(start,start+ps)
@@ -72,6 +68,7 @@ def compute_pairwise_distance_numba(dists,burst,blocks,centroids,ps):
     two,t,s,h,w = blocks.shape
     c,tK,s,h,w = centroids.shape
     psHalf = ps//2
+    Z = ps*ps*c
     for t0 in prange(t):
         for t1 in prange(tK):
             for si in prange(s):
@@ -93,6 +90,9 @@ def compute_pairwise_distance_numba(dists,burst,blocks,centroids,ps):
                                     b_t1 = centroids[ci,t1,si,h_t1[pH],w_t1[pW]]
                                     diff = (b_t0 - b_t1)**2
                                     dists[t0,t1,si,hi,wi] += diff
+                        dists[t0,t1,si,hi,wi] /= Z
+                        dists[t0,t1,si,hi,wi] -= offset
+                        dists[t0,t1,si,hi,wi] = abs(dists[t0,t1,si,hi,wi])
     return dists
 
 # ------------------------------------------------------------------------

@@ -15,11 +15,12 @@
 #include <faiss/gpu/impl/DistanceUtils.cuh>
 #include <faiss/gpu/impl/MeshSearchSpace.cuh>
 #include <faiss/gpu/impl/KmUtils.cuh>
+#include <faiss/gpu/impl/ComputeModes.cuh>
+#include <faiss/gpu/impl/KmBurstAve.cuh>
+#include <faiss/gpu/impl/KmBurstAve4d.cuh>
 #include <faiss/gpu/impl/KMeans.cuh>
 #include <faiss/gpu/impl/KmBurstL2Norm.cuh>
-#include <faiss/gpu/impl/L2Norm.cuh>
-#include <faiss/gpu/impl/BurstNnfL2Norm.cuh>
-#include <faiss/gpu/impl/L2Select.cuh>
+#include <faiss/gpu/impl/KmBurstTopK.cuh>
 #include <faiss/gpu/utils/BurstBlockSelectKernel.cuh>
 #include <faiss/gpu/utils/DeviceDefs.cuh>
 #include <faiss/gpu/utils/Limits.cuh>
@@ -183,7 +184,7 @@ void runKmBurstDistance(
     // 	   tileHeight,tileWidth,tileBlocks);
 
 
-    DeviceTensor<uint8_t, 4, true> cluster_sizes(res,
+    DeviceTensor<uint8_t, 4, true> sizes(res,
 	makeTempAlloc(AllocType::Other, stream),
 	{kmeansK,tileBlocks,tileHeight,tileWidth});
 
@@ -523,6 +524,7 @@ void runKmBurstDistance(
 		//
         	// Assert Shapes
 		//
+
         	// FAISS_ASSERT(aveView.getSize(0) == burstView.getSize(0));
         	// FAISS_ASSERT(aveView.getSize(2) == burstView.getSize(2));
         	// FAISS_ASSERT(aveView.getSize(3) == burstView.getSize(3));
@@ -531,25 +533,27 @@ void runKmBurstDistance(
         	// Compute Clusters using Patches
         	//
 
+		float offset = 0;
 		kmeans_clustering(kmDistView,burst,blockView,
 				  centroidView,clusterView,
-				  cluster_sizes,patchsize,
-				  kmeansK,(float)0.,streams[curStream]);
+				  sizes,patchsize,
+				  kmeansK,offset,streams[curStream]);
 
 		//
 		// Compute Mode
 		//
 
-		// mode = compute_mode(cluster_sizes,patchsize,std);
+		// compute_mode_centroids(std,patchsize,nftrs,
+		// 		       sizes,modes,streams[curStream]);
+		// kmb_ave4d(modes,modes_ave,streams[curStream]);
+
 
 		//
 		// Compute Average of Clusters
 		//
 
-        	// runKmBurstAverage(centroidView,blockView,
-		// 		aveView,patchsize,nsearch,
-		// 		streams[curStream]);
-        
+        	// kmb_ave(centroidView,aveView,streams[curStream]);
+
         	// thrust::fill(thrust::cuda::par.on(stream),
         	// 		 aveView.data(),
         	// 		 aveView.end(),

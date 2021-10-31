@@ -24,6 +24,7 @@ def tiled_search_frames(nfsearch,nsiters,ref):
         sframes[i,:] = base + i
         if len(torch.where(ref == sframes[i,:])[0]) == 0:
                sframes[i,0] = ref
+    sframes = sframes.type(torch.int)
     return sframes
 
 def mesh_from_ranges(search_ranges,search_frames,curr_blocks,ref):
@@ -41,6 +42,7 @@ def mesh_from_ranges(search_ranges,search_frames,curr_blocks,ref):
     blocks = curr_blocks.clone()
     blocks = repeat(blocks,'two t h w -> two t b h w',b=nblocks)
     for group,frame in enumerate(search_frames):
+        if frame == ref: continue
         blocks[:,frame] = mesh[:,group]
     
     return blocks

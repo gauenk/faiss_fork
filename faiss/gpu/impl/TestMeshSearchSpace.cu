@@ -21,13 +21,10 @@ namespace faiss {
       // Test cases
       //
 
-      template<typename T>
-      void test_case_0(Tensor<T, 5, true, int>& dists,
-		       Tensor<T, 4, true, int>& burst,
-		       Tensor<int, 5, true, int>& blocks,
-		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<uint8_t, 4, true, int>& clusters,
-		       int patchsize, float offset,
+      void test_case_0(Tensor<int, 5, true, int>& blocks,
+		       Tensor<int, 3, true>& init_blocks,
+		       Tensor<int, 5, true>& search_ranges,
+		       Tensor<int, 2, true>& search_frames,
 		       cudaStream_t stream){
 	int* one = (int*)malloc(sizeof(int));
 	*one = 1;
@@ -46,15 +43,15 @@ namespace faiss {
 	free(one);
       }
     
-      template<typename T>
-      void test_case_1(Tensor<T, 5, true, int>& dists,
-		       Tensor<T, 4, true, int>& burst,
-		       Tensor<int, 5, true, int>& blocks,
-		       Tensor<T, 5, true, int>& centroids,
-		       Tensor<uint8_t, 4, true, int>& clusters,
-		       int patchsize, float offset,
+      void test_case_1(Tensor<int, 5, true, int>& blocks,
+		       Tensor<int, 3, true>& init_blocks,
+		       Tensor<int, 5, true>& search_ranges,
+		       Tensor<int, 2, true>& search_frames,
 		       cudaStream_t stream){
-	fprintf(stdout,"test_case_1,\n");
+	int iter = 0;
+	create_search_space(search_ranges,blocks,init_blocks,
+			    search_frames,iter,stream);
+
       }
 
     } // namespace test_mss
@@ -63,57 +60,24 @@ namespace faiss {
     // Main Test Function 
     //
 
-    template<typename T>
     void test_mesh_search_space(int test_case,
-				Tensor<T, 5, true, int>& dists,
-				Tensor<T, 4, true, int>& burst,
 				Tensor<int, 5, true, int>& blocks,
-				Tensor<T, 5, true, int>& centroids,
-				Tensor<uint8_t, 4, true, int>& clusters,
-				int patchsize, float offset,
+				Tensor<int, 3, true>& init_blocks,
+				Tensor<int, 5, true>& search_ranges,
+				Tensor<int, 2, true>& search_frames,
 				cudaStream_t stream){
 
       fprintf(stdout,"Testing: [mesh search space update]\n");
       if (test_case == 0){
-	test_mss::test_case_0<T>(dists,burst,blocks,centroids,
-				 clusters,patchsize,offset,stream);
+	test_mss::test_case_0(blocks,init_blocks,search_ranges,search_frames,stream);
       }else if (test_case == 1){
-	test_mss::test_case_1<T>(dists,burst,blocks,centroids,
-				 clusters,patchsize,offset,stream);
+	test_mss::test_case_1(blocks,init_blocks,search_ranges,search_frames,stream);
       }else{
 	FAISS_THROW_FMT("[TestMeshSearchSpace.cu]: unimplemented test case %d",test_case);
       }
 
     }
 
-    //
-    // Template Init
-    // 
-
-    void test_mesh_search_space(int test_case,
-				Tensor<float, 5, true, int>& dists,
-				Tensor<float, 4, true, int>& burst,
-				Tensor<int, 5, true, int>& blocks,
-				Tensor<float, 5, true, int>& centroids,
-				Tensor<uint8_t, 4, true, int>& clusters,
-				int patchsize, float offset,
-				cudaStream_t stream){
-      test_mesh_search_space<float>(test_case,dists,burst,blocks,centroids,clusters,
-				    patchsize, offset, stream);
-    }
-
-    void test_mesh_search_space(int test_case,
-				Tensor<half, 5, true, int>& dists,
-				Tensor<half, 4, true, int>& burst,
-				Tensor<int, 5, true, int>& blocks,
-				Tensor<half, 5, true, int>& centroids,
-				Tensor<uint8_t, 4, true, int>& clusters,
-				int patchsize, float offset,
-				cudaStream_t stream){
-      test_mesh_search_space<half>(test_case,dists,burst,blocks,centroids,clusters,
-				   patchsize, offset, stream);
-
-    }
 
   }
 }

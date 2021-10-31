@@ -61,15 +61,17 @@ def test_case_5():
     start_time = time.perf_counter()
     exec_test(PWD_TYPE,2,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,kmeansK,std,
               burst,block_gt,search_frames,zinits.search_ranges,zinits.outDists,
-              zinits.outInds,zinits.modes,dists,zinits.self_dists,centroids,
-              zinits.clusters,zinits.cluster_sizes,blocks,zinits.ave)
+              zinits.outInds,zinits.modes,zinits.modes3d,dists,zinits.self_dists,
+              centroids,zinits.clusters,zinits.cluster_sizes,
+              blocks,zinits.ave,zinits.vals)
     exec_runtime = time.perf_counter() - start_time
     print("Exec Runtime: %2.3e" % (exec_runtime))
     # print(dists)
     # print(dists_gt)
 
     # -- compute using python --
-    dists_gt = compute_pairwise_distance(burst,blocks,centroids,ps)
+    offset = 0.
+    dists_gt = compute_pairwise_distance(burst,blocks,centroids,ps,offset)
     
     #
     # -- compare results --
