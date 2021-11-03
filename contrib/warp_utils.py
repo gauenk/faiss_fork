@@ -21,7 +21,17 @@ from pyutils import get_img_coords
 #
 # ------------------------------
 
+def loc_index_names(nimages,h,w,k,device):
+    npix = h*w
+    locs_ref = np.c_[np.unravel_index(np.arange(npix),(h,w))]
+    locs_ref = locs_ref.reshape(h,w,2)
+    locs_ref = repeat(locs_ref,'h w two -> i h w k two',i=nimages,k=k)
+    locs_ref = torch.IntTensor(locs_ref).to(device,non_blocking=True)
+    return locs_ref
+
 def locs2flow(locs):
+    two = locs.shape[-1]
+    assert two == 2,"get locs"
     # flows = rearrange(locs,'t i h w p two -> p i (h w) t two')
     flows_y = -locs[...,0]
     flows_x = locs[...,1]
@@ -54,28 +64,32 @@ def pix2locs(pix):
 #
 # ------------------------------
 
-def warp_burst_from_pix(burst,pix,nblocks=None):
+def warp_burst_from_pix(burst,pix,pad=None):
     ndim = burst.dim()
     if ndim == 5:
-        return warp_burst_from_pix_5d_burst(burst,pix,nblocks)
+        return warp_burst_from_pix_5d_burst(burst,pix,pad)
     if ndim == 4:
         return warp_burst_from_pix_4d_burst(burst,pix)
     else:
         msg = f"Uknown warp_burst_from_pix for burst with dims {ndim}"
         raise NotImplemented(msg)
 
-def warp_burst_from_pix_5d_burst(burst,pix,nblocks):
+def warp_burst_from_pix_5d_burst(burst,pix,pad):
 
     # -- block ranges per pixel --
     assert burst.dim() == 5,"The image batch dim is included"
+    nframes_b,nimages_b,c,h_b,w_b = burst.shape
     nframes,nimages,h,w,k,two = pix.shape
     nparticles = k
     pix = rearrange(pix,'t i h w p two -> p i (h w) t two')
+    if pad is None: pad = 0
+    assert nframes_b == nframes,"eq frames"
+    assert nimages_b == nimages,"eq images"
 
     # -- create offsets --
     warps = []
     for p in range(nparticles):
-        warped = align_from_pix(burst,pix[p],nblocks)
+        warped = align_from_pix(burst,pix[p],pad)
         warps.append(warped)
     warps = torch.stack(warps).to(burst.device)
 
@@ -120,7 +134,7 @@ def warp_burst_from_locs_4d_burst(burst,locs,isize):
     # -- create offsets --
     warps = []
     for b in range(nblocks):
-        warped = align_from_flow(burst,flows[b],1,isize=isize)
+        warped = align_from_flow(burst,flows[b],0,isize=isize)
         warps.append(warped)
     warps = torch.stack(warps).to(burst.device)
 
@@ -144,7 +158,7 @@ def warp_burst_from_locs_5d_burst(burst,locs,isize):
     # -- create offsets --
     warps = []
     for p in range(nparticles):
-        warped = align_from_flow(burst,flows[p],1,isize=isize)
+        warped = align_from_flow(burst,flows[p],0,isize=isize)
         warps.append(warped)
     warps = torch.stack(warps).to(burst.device)
     return warps

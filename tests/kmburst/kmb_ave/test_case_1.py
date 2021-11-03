@@ -67,6 +67,7 @@ def test_case_1():
 
     # -- compute using python --
     ave_gt = torch.mean(centroids,dim=1)
+    # ave_gt = compute_centroid_ave(centroids,sizes)
 
     # -- visually compare --
     print(ave)

@@ -8,4 +8,4 @@ from .centroid_update_impl import update_centroids,init_centroids
 from .kmeans_impl import run_kmeans
 from .compute_mode_impl import compute_mode_pairs,compute_mode_burst,compute_mode_centroids
 from .topk_impl import kmb_topk
-
+from .compute_burst_dists_impl import compute_burst_dists

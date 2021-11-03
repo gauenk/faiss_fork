@@ -45,14 +45,6 @@ def padLocs(locs,pad,mode='constant'):
     plocs = rearrange(plocs,'t i k two h w -> t i h w k two')
     return plocs
 
-def loc_index_names(nimages,h,w,k,device):
-    npix = h*w
-    locs_ref = np.c_[np.unravel_index(np.arange(npix),(h,w))]
-    locs_ref = locs_ref.reshape(h,w,2)
-    locs_ref = repeat(locs_ref,'h w two -> i h w k two',i=nimages,k=k)
-    locs_ref = torch.IntTensor(locs_ref).to(device,non_blocking=True)
-    return locs_ref
-
 def rows_uniq_elems(a):
     a_sorted = torch.sort(a,axis=-1)
     return a[(a_sorted[...,1:] != a_sorted[...,:-1]).all(-1)]

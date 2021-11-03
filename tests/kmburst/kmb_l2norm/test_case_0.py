@@ -51,23 +51,24 @@ def test_case_0():
 
     # -- setup for test --
     clusters = torch.zeros_like(zinits.clusters)
-    centroids = torch.zeros_like(zinits.centroids)
+    # centroids = torch.zeros_like(zinits.centroids)
     dists = torch.zeros_like(zinits.km_dists)
     modes = torch.zeros_like(zinits.modes)
     ave = torch.zeros_like(zinits.ave)
     outDists = torch.zeros_like(zinits.outDists)
     outInds = torch.zeros_like(zinits.outInds)
+    vals = torch.zeros_like(zinits.vals)
     
     # -- execute test --
     exec_test(KMBL2NORM_TYPE,0,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
               kmeansK,std,burst,block_gt,search_frames,search_ranges,
               outDists,outInds,zinits.modes,zinits.modes3d,
               zinits.km_dists,zinits.self_dists,centroids,clusters,
-              zinits.cluster_sizes,blocks,ave,zinits.vals)
+              zinits.cluster_sizes,blocks,ave,vals)
 
     # -- compute using python --
-    outDists_gt = torch.ones_like(zinits.outDists)
+    vals_gt = torch.ones_like(vals)
     
     # -- compare results --
-    delta = torch.sum(torch.abs(outDists - outDists_gt)).item()
+    delta = torch.mean(torch.abs(vals - vals_gt)).item()
     assert delta < 1e-8, "Difference must be smaller than tolerance."

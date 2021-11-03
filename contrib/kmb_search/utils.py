@@ -17,24 +17,42 @@ from bp_search import create_mesh_from_ranges
 from warp_utils import warp_burst_from_locs,warp_burst_from_pix
 th_pad = torchvision.transforms.functional.pad
 
-def tiled_search_frames(nfsearch,nsiters,ref):
+def tiled_search_frames(nframes,nfsearch,nsiters,ref):
+    assert nfsearch <= nframes,"must search leq nframes"
     sframes = torch.zeros(nsiters,nfsearch)
-    base = torch.arange(nfsearch).type(torch.int)
+
+    # -- create first cycle in [0,nfsearch-2] --
+    m = 0
+    base = torch.arange(nfsearch-1).type(torch.int)
     for i in range(nsiters):
-        sframes[i,:] = base + i
-        if len(torch.where(ref == sframes[i,:])[0]) == 0:
-               sframes[i,0] = ref
-    sframes = sframes.type(torch.int)
+        sframes[i,:-1] = (base + m) % nframes
+        # print(sframes[i,:],torch.where(ref == sframes[i,:])[0],m)
+        # if len(torch.where(ref == sframes[i,:])[0]) == 0:
+        #        sframes[i,0] = ref
+        # sframes[i,:] = sframes[i,:] % nframes
+        if m == (nframes-nfsearch): m = 0
+        else: m = m+1
+
+    # -- add value if greater than reference --
+    sframes[np.where(sframes >= ref)] += 1
+
+    # -- fill last with ref --
+    sframes[:,-1] = ref
+
+    # -- sort each row --
+    sframes = torch.sort(sframes,dim=1)[0]
+
     return sframes
 
 def mesh_from_ranges(search_ranges,search_frames,curr_blocks,ref):
     # -- create mesh of current blocks --
     search_frames = search_frames.type(torch.long) # for torch indexing
     two,t,s,h,w = search_ranges.shape
-    sranges = rearrange(search_ranges,'two t s h w -> s 1 h w t two')
-    sranges = sranges[...,search_frames,:]
-    ref = torch.where(search_frames == ref)[0][0].item()
-    mesh = create_mesh_from_ranges(sranges,ref)
+    sranges = rearrange(search_ranges,'two t s h w -> t s 1 h w two')
+    sranges = sranges[search_frames]
+    sranges = rearrange(sranges,'t s 1 h w two -> s 1 h w t two')
+    m_ref = torch.where(search_frames == ref)[0][0].item()
+    mesh = create_mesh_from_ranges(sranges,m_ref)
     mesh = rearrange(mesh,'b 1 h w g two -> two g b h w')
 
     # -- append the current state frames --
@@ -42,14 +60,22 @@ def mesh_from_ranges(search_ranges,search_frames,curr_blocks,ref):
     blocks = curr_blocks.clone()
     blocks = repeat(blocks,'two t h w -> two t b h w',b=nblocks)
     for group,frame in enumerate(search_frames):
-        if frame == ref: continue
+        # if frame == ref: continue
+        if group == m_ref: continue
         blocks[:,frame] = mesh[:,group]
     
+    print("-"*30)
+    print(ref)
+    print(mesh[:,:,:5,4,5].transpose(0,-1))
+    print(blocks[:,:,:5,4,5].transpose(0,-1))
+    print(search_ranges.shape)
+
     return blocks
 
-def jitter_search_ranges(nrange,t,h,w):
+def jitter_search_ranges(nrange,t,h,w,ref=None,offset=True):
 
     # -- create ranges --
+    if ref is None: ref = t//2
     mrange = nrange//2
     sranges = torch.zeros(nrange,nrange,2)
     for i in range(nrange):
@@ -62,18 +88,20 @@ def jitter_search_ranges(nrange,t,h,w):
     sranges = repeat(sranges,'r2 two -> two t r2 h w',t=t,h=h,w=w)
     sranges = sranges.type(torch.int).contiguous()
 
-    # -- compute absolute coordinates --
-    r2 = nrange**2
-    coords = get_img_coords(t,r2,h,w)
+    # -- zero out ref ranges --
+    sranges[:,ref] = torch.zeros_like(sranges[:,0])
 
     # -- from relative to absolute coordinates --
-    sranges = sranges + coords
+    if offset:
+        r2 = nrange**2
+        coords = get_img_coords(t,r2,h,w)
+        sranges = sranges + coords
 
     return sranges
 
-def jitter_traj_ranges(trajs,jsize):
+def jitter_traj_ranges(trajs,jsize,ref=None,offset=True):
     k,i,two,t,h,w = trajs.shape
-    jitter = jitter_search_ranges(jsize,t,h,w).to(trajs.device)
+    jitter = jitter_search_ranges(jsize,t,h,w,ref,offset).to(trajs.device)
     jitter = repeat(jitter,'two t r2 h w -> k i two t r2 h w',k=k,i=i)
     trajs = repeat(trajs,'k i two t h w -> k i two t r2 h w',r2=jsize**2)
     jtrajs = trajs + jitter

@@ -10,6 +10,9 @@ from einops import rearrange,repeat
 from easydict import EasyDict as edict
 import scipy.stats as stats
 
+# -- project --
+from pyutils import save_image,get_img_coords
+
 # -- plotting imports --
 import matplotlib
 matplotlib.use("agg")
@@ -20,6 +23,7 @@ import matplotlib.pyplot as plt
 import sys
 sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib")
 from pyutils import save_image
+from pyutils.images import images_to_psnrs,images_to_psnrs_crop
 from align import nnf 
 from align.xforms import pix_to_blocks,align_from_flow
 from datasets.transforms import get_dynamic_transform
@@ -31,17 +35,18 @@ import nnf_utils as nnf_utils
 import bnnf_utils as bnnf_utils
 import sub_burst as sbnnf_utils
 from bp_search import runBpSearch
-from nnf_share import padAndTileBatch,padBurst,tileBurst,pix2locs
-from kmb_search import runKmSearch
+from nnf_share import padAndTileBatch,padBurst,tileBurst
+from warp_utils import warp_burst_from_locs,warp_burst_from_pix
+from warp_utils import pix2locs,locs2flow,flow2locs
+from kmb_search import runKmSearch,compute_mode_pairs
 from kmb_search.testing.utils import compute_gt_burst,set_seed
 
 def exp_setup():
     # seed = 234
-    seed = 345
-    # seed = 456
+    # seed = 345
+    seed = 456
     # seed = 678
     set_seed(seed)
-
     
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
@@ -50,14 +55,15 @@ def exp_setup():
     # h,w,c = 512,512,3
     # h,w,c = 256,256,3
     # h,w,c = 128,128,3
-    h,w,c = 64,64,2
+    # h,w,c = 64,64,3
+    h,w,c = 16,16,3
     # h,w,c = 15,15,2
     # h,w,c = 47,47,3
     # h,w,c = 32,32,3
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
     # ps,nblocks = 11,10
-    patchsize = 3
+    patchsize = 5
     nblocks = 3
     k = 3#(nblocks**2)**2
     gpuid = 0
@@ -80,7 +86,7 @@ def test_burst_nnf_sample():
     # -- apply dynamic xform --
     dynamic_info = edict()
     dynamic_info.mode = 'global'
-    dynamic_info.nframes = 4
+    dynamic_info.nframes = 9
     dynamic_info.ppf = 1
     dynamic_info.frame_size = [h,w]
     dyn_xform = get_dynamic_transform(dynamic_info,None)
@@ -98,26 +104,43 @@ def test_burst_nnf_sample():
     # ----------------------------
 
     # -- sample data --
-    image = np.random.rand(h,w,c).astype(np.float32)
-    image[1::2,::2] = 1.
-    image[::2,1::2] = 1.
+    image = np.random.rand(3*h,3*w,c).astype(np.float32)
+    # image[1::2,::2] = 1.
+    # image[::2,1::2] = 1.
     image = np.uint8(image*255.)
     imgPIL = Image.fromarray(image)
     dyn_result = dyn_xform(imgPIL)
     burst = dyn_result[0][:,None].to(gpuid)
     flow =  dyn_result[-2]
     device = burst.device
+    ref = t//2
 
     # -- format data --
-    std = 20
+    std = 20.
     noise = np.random.normal(loc=0,scale=std/255.,size=(t,1,c,h,w)).astype(np.float32)
-    burst += torch.FloatTensor(noise).to(device)
+    clean = burst.clone()
+    repimage = repeat(clean[ref],'1 c h w -> t 1 c h w',t=t).clone()
+    # burst += torch.FloatTensor(noise).to(device)
     block = np.c_[-flow[:,1],flow[:,0]] # (dx,dy) -> (dy,dx) with "y" [0,M] -> [M,0]
-    save_image("burst.png",burst)
+    print("-- block --")
+    print(block)
+    print("-- flow --")
+    print(flow)
     nframes,nimages,c,h,w = burst.shape
     isize = edict({'h':h,'w':w})
     flows = repeat(flow,'t two -> 1 p t two',p=h*w)
-    aligned = align_from_flow(burst,flows,patchsize,isize=isize)
+    blocks_gt = repeat(block,'t two ->  two t h w',h=h,w=w)
+    coords = get_img_coords(t,1,h,w)[:,:,0].to(device)
+    indices_gt = torch.LongTensor(blocks_gt).to(device) + coords
+    aligned = align_from_flow(clean,flows,0,isize=isize)
+    save_image("tkmb_burst.png",burst)
+    save_image("tkmb_clean.png",clean)
+    save_image("tkmb_repimage.png",repimage)
+    save_image("tkmb_aligned.png",aligned)
+    psnrs = images_to_psnrs_crop(aligned,repimage,3)
+    print("GT PSNRS [aligned vs repimage]: ",psnrs)
+    psnrs = images_to_psnrs(clean,repimage)
+    print("GT PSNRS [clean v.s. repimage: ",psnrs)
     assert dynamic_info.ppf <= (nblocks//2), "nblocks is too small for ppf"
 
     # -- add padding --
@@ -127,8 +150,8 @@ def test_burst_nnf_sample():
     print("pad no tile ",burstPad.shape)
 
     # -- get block labels --
-    blockLabels,_ = bnnf_utils.getBlockLabels(None,nblocks,np.float32,
-                                              'cpu',False,nframes)
+    # blockLabels,_ = bnnf_utils.getBlockLabels(None,nblocks,np.float32,
+    #                                           'cpu',False,nframes)
 
     # ------------------------------
     #
@@ -148,7 +171,8 @@ def test_burst_nnf_sample():
     #
     # ------------------------------
 
-    valMean = 0.
+    valMean = compute_mode_pairs(std/255.,c,patchsize)
+    print("valMean: ",valMean)
     start_time = time.perf_counter()
     nnf_vals,nnf_locs = nnf_utils.runNnfBurst(burst, patchsize,
                                               nblocks, 1,
@@ -156,7 +180,13 @@ def test_burst_nnf_sample():
                                               blockLabels=None)
     runtimes.L2Local = time.perf_counter() - start_time
     vals.L2Local = nnf_vals[:,0]
-    locs.L2Local = pix2locs(nnf_locs)[:,0]
+    locs.L2Local = pix2locs(nnf_locs)
+    # print("locs.L2Local.shape: ",locs.L2Local.shape)
+    warp = warp_burst_from_locs(clean,locs.L2Local)[0]    
+    psnrs = images_to_psnrs_crop(warp[:,0],repimage[:,0],2)
+    print("-- [L2Local.psnrs] --")
+    print(psnrs)
+    save_image("tkmb_l2_warp.png",warp)
 
     # ------------------------------------------
     #
@@ -167,17 +197,33 @@ def test_burst_nnf_sample():
     print("-"*30)
     print("KMeans Burst")
     print("-"*30)
+    gt_info = {'indices':indices_gt}
     gt_dist = 0.
-    start_time = time.perf_counter()
+    start_time = time.perf_counter()    
     _vals,_locs = runKmSearch(burst, patchsize,nblocks, k = k,
-                              std = std,search_space=None, ref=None)
+                              std = std/255.,search_space=None,
+                              ref=None,python=True,gt_info=gt_info)
     runtimes.KmBurst = time.perf_counter() - start_time
     print("_vals.shape: ",_vals.shape)
     print("_locs.shape: ",_locs.shape)
+    # print(_vals[0,0,4:6,4:6])
+    # print(_locs[0,0,:,4,4,:])
+    # tmp = _locs[...,0].clone()
+    # _locs[...,0] = _locs[...,1]
+    # _locs[...,1] = tmp
     # vals.shape: (i,k,h,w)
     # locs.shape: (i,k,t,h,w,2)
     vals.KmBurst = _vals[0,0]
     locs.KmBurst = _locs[0,0]
+    print(_locs[0,0,:,4,4,:])
+    wlocs = rearrange(_locs,'i k t h w two -> t i h w k two')
+    warp = warp_burst_from_locs(clean,wlocs)[0]    
+    psnrs = images_to_psnrs_crop(warp[:,0],repimage[:,0],2)
+    print("-- [KmBurst.psnrs] --")
+    print(psnrs)
+    save_image("tkmb_warp.png",warp)
+    return
+
     # locs.KmBurst = _locs[0]
     print(locs.KmBurst.shape)
     print(_locs.shape)
@@ -209,14 +255,14 @@ def test_burst_nnf_sample():
     img_shape[0] = wburst.shape[-3]
     print("wburst.shape ",wburst.shape)
     start_time = time.perf_counter()
-    _vals,_locs,_ = runBpSearch(burst, burst, patchsize, nblocks,
-                                k=k, valMean = valMean,
-                                blockLabels=None,
-                                search_type="cluster_approx")
-    # _vals,_locs = sbnnf_utils.runBurstNnf(wburst, 1, nblocks,
-    #                                       k=3, valMean = valMean,
-    #                                       blockLabels=None,
-    #                                       img_shape=img_shape)
+    # _vals,_locs,_ = runBpSearch(burst, burst, patchsize, nblocks,
+    #                             k=k, valMean = valMean,
+    #                             blockLabels=None,
+    #                             search_type="cluster_approx")
+    _vals,_locs = sbnnf_utils.runBurstNnf(wburst, 1, nblocks,
+                                          k=3, valMean = valMean,
+                                          blockLabels=None,
+                                          img_shape=img_shape)
     # _vals,_locs = sbnnf_utils.runBurstNnf(burst, patchsize, nblocks,
     #                                       k=3, valMean = valMean,
     #                                       blockLabels=None,

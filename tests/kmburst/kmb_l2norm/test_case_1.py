@@ -1,3 +1,10 @@
+"""
+
+Test KmBurstL2Norm
+
+The l2norm between each centroids and the ave
+
+"""
 
 # -- python --
 import pytest
@@ -14,7 +21,7 @@ from pyutils import save_image,get_img_coords
 import sys
 import faiss
 sys.path.append("/home/gauenk/Documents/faiss/contrib/")
-from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges,update_clusters,compute_pairwise_distance,init_clusters,update_centroids,run_kmeans
+from kmb_search import jitter_search_ranges,tiled_search_frames,mesh_from_ranges,update_clusters,compute_pairwise_distance,init_clusters,update_centroids,run_kmeans,compute_burst_dists
 from kmb_search import compute_mode_pairs,compute_mode_burst,compute_mode_centroids
 from kmb_search.testing.interface import exec_test,init_zero_tensors
 from kmb_search.testing.kmbl2norm_utils import KMBL2NORM_TYPE,kmbl2norm_setup
@@ -41,7 +48,7 @@ def test_case_1():
     coords = get_img_coords(t,1,h,w)[:,:,0].to(device)
     seed = 234
     verbose = False
-    tol = 1e-7
+    tol = 1e-4
     zinits = init_zero_tensors(k,t,h,w,c,ps,nblocks,nbsearch,
                                nfsearch,kmeansK,nsiters,device)
     if verbose: print(zinits.shapes)
@@ -54,23 +61,32 @@ def test_case_1():
     blocks = mesh_from_ranges(search_ranges,search_frames[0],block_gt,t//2).to(device)
     clusters,sizes = init_clusters(t,kmeansK,nblocks,h,w,device)
     centroids = torch.rand_like(zinits.centroids)
+    ave = torch.mean(centroids,dim=0)
+    print("centroids.shape: ",centroids.shape)
+    print("ave.shape: ",ave.shape)
 
     # -- tensors to test --
     outDists = zinits.outDists.clone()
     outInds = zinits.outInds.clone()
+    vals = zinits.vals.clone()
 
     # -- execute test --
     exec_test(KMBL2NORM_TYPE,1,k,t,h,w,c,ps,nblocks,nbsearch,nfsearch,
               kmeansK,std,burst,block_gt,search_frames,search_ranges,
               outDists,outInds,zinits.modes,zinits.modes3d,zinits.km_dists,
-              zinits.self_dists,centroids,clusters,
-              sizes,blocks,zinits.ave,zinits.vals)
+              zinits.self_dists,centroids,clusters,sizes,blocks,ave,vals)
 
     # -- compute using python --
     outDists_gt = torch.ones_like(outDists)
     outInds_gt = torch.ones_like(outInds)
-    
+    vals_gt = compute_burst_dists(centroids,sizes,ave,ps)
+
+    # -- visually inspect outputs --
+    if verbose:
+        print(vals)
+        print(vals_gt)
+
     # -- compare results --
-    delta = torch.sum(torch.abs(outDists - outDists_gt)).item()
-    assert delta < 1e-8, "Difference must be smaller than tolerance."
+    delta = torch.mean(torch.abs(vals - vals_gt)).item()
+    assert delta < tol, "Difference must be smaller than tolerance."
     

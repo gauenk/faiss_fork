@@ -14,6 +14,8 @@ from nnf_utils import runNnfBurst as runPairBurst
 
 # -- run kmburst --
 from .impl import runKmBurstSearch
+from .topk_impl import kmb_topk
+from .compute_mode_impl import compute_mode_pairs
 from .utils import jitter_traj_ranges,init_zero_locs
 
 def create_trajectories(locs):
@@ -39,52 +41,91 @@ def create_trajectories(locs):
     trajs = rearrange(locs,'t i h w k two -> k i two t h w')        
     return trajs
 
-def choose_best(agg_vals,agg_locs):
+def choose_best(agg_vals,agg_locs,agg_modes,K):
     """
     Choose the best.
 
     """
-    return agg_vals[0],agg_locs[0]
+    agg_vals = torch.cat(agg_vals,dim=1)
+    agg_locs = torch.cat(agg_locs,dim=3)
+    agg_modes = torch.cat(agg_modes,dim=1)
+    vals,locs,modes = [],[],[]
+    nimages = agg_vals.shape[0]
+    # print(agg_vals.shape,agg_locs.shape,agg_modes.shape)
+    for i in range(nimages):
+        vals_i,modes_i,locs_i = kmb_topk(agg_vals[i],agg_modes[i],agg_locs[i],K)
+        vals.append(vals_i)
+        modes.append(modes_i)
+        locs.append(locs_i)
+    vals = torch.stack(vals,dim=0)
+    locs = torch.stack(locs,dim=0)
+    return vals,locs
 
-def runKmSearch(burst,patchsize,nblocks,k=1,std=None,
-               l2_patchsize=None,l2_nblocks=None,l2_k=None,
-               search_space=None,ref=None):
+def runKmSearch(burst,patchsize,nsearch_xy,k=1,std=None,
+                l2_patchsize=None,l2_nblocks=None,l2_k=None,
+                search_space=None,ref=None,python=False,
+                gt_info=None):
 
     # -- init vars --
     device = burst.device
     nframes,nimages,c,h,w = burst.shape
     if ref is None: ref = nframes//2
     if l2_patchsize is None: l2_patchsize = patchsize
-    if l2_nblocks is None: l2_nblocks = nblocks
-    if l2_k is None: l2_k = k
+    if l2_nblocks is None: l2_nblocks = nsearch_xy
+    if l2_k is None: l2_k = 5
 
     # -- run l2 --
-    # l2_mode = compute_l2_mode(std,patchsize)
-    # vals,locs = runPairBurst(burst,l2_patchsize,
-    #                          l2_nblocks,k=l2_k,valMean=l2_mode,
-    #                          img_shape = None)
+    l2_mode = compute_mode_pairs(std,c,patchsize)
+    vals,locs = runPairBurst(burst,l2_patchsize,
+                             l2_nblocks,k=l2_k,valMean=l2_mode,
+                             img_shape = None)
+    locs = torch.flip(locs,dims=(-1,))
+    locs = locs.to(device)
+    offset = False
+
+    # -- use zero init --
     locs = init_zero_locs(nframes,nimages,h,w).to(device)
+    offset = True
 
     # -- create a set of smoothed trajectories --
     trajs = create_trajectories(locs)
-    search_ranges = jitter_traj_ranges(trajs,nblocks)
-    print(locs.shape)
-    print(search_ranges.shape)
-    print(search_ranges[...,16,16])
+    search_ranges = jitter_traj_ranges(trajs,nsearch_xy,ref,offset=offset)
+    # print("-"*10)
+    # print(search_ranges[0,0,:,:,:,9,7].transpose(0,-1))
+    # print("-"*10)
+    # print(search_ranges.shape)
+
+    # -- create search ranges using the l2 output directly --
+    # search_ranges = locs.clone()
+    # search_ranges = rearrange(search_ranges,'t i h w k two -> 1 i two t k h w')
+    # print(search_ranges.shape)
+    # exit()
+    # print(search_ranges[0,0,:,:,:,6,6].transpose(0,-1))
 
     # -- create search space from trajectories --
     nframes_search = 3 # constant from C++
-    nsearch = nblocks**2#**(nframes_search)
-    agg_vals,agg_locs = [],[]
+    nsearch = nsearch_xy**2#**(nframes_search)
+    agg_vals,agg_locs,agg_modes = [],[],[]
     for search_ranges_p in search_ranges:
-        vals_p,locs_p = runKmBurstSearch(burst, patchsize, nsearch,
-                                         k=1, kmeansK=3, ref = ref,
-                                         search_ranges = search_ranges_p)
+        vals_p,locs_p,modes_p = runKmBurstSearch(burst, patchsize, nsearch,
+                                                 k=1, kmeansK=3, ref = ref,
+                                                 std = std,
+                                                 nsiters=4,nfsearch=4,
+                                                 search_ranges = search_ranges_p,
+                                                 python=python,gt_info=gt_info)
+        print("vals_p.shape: ",vals_p.shape)
         agg_vals.append(vals_p)
         agg_locs.append(locs_p)
+        agg_modes.append(modes_p)
     
     # -- choose the best from the trajectories --
-    vals,locs = choose_best(agg_vals,agg_locs)
+    vals,locs = choose_best(agg_vals,agg_locs,agg_modes,1)
+
+    # -- format locs --
+    locs = rearrange(locs,'i two t k h w -> i k t h w two').cpu()
+    # vals.shape: (i,k,h,w)
+    # locs.shape: (i,k,t,h,w,2)
+
 
     return vals,locs
 
