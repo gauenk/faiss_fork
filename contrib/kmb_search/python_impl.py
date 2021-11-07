@@ -34,6 +34,12 @@ from .utils import get_optional_field
 
 from .debug import get_optimal_search_index
 
+# -- load functions --
+from .parse_cluster_impl import get_cluster_function
+from .parse_ave_impl import get_ave_function
+from .parse_mode_impl import get_mode_function
+from .parse_score_impl import get_score_function
+
 
 def vprint(*args,**kwargs):
     VERBOSE = False
@@ -72,6 +78,8 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
     # -- get running params --
     ave_fxn = get_ave_function(testing)
     cluster_fxn = get_cluster_function(testing)
+    mode_fxn = get_mode_function(testing)
+    score_fxn = get_score_function(testing)
 
     # -- shape --
     device = burst.device
@@ -135,91 +143,39 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
         iframes = pick_fill_frames(sframes,nfsearch,t,alpha,s_iter,device)
 
         # -- cluster function --
-        output = cluster_fxn(burst,clean,kmeansK,indices,inidices_gt,sframes,iframes,ps)
+        output = cluster_fxn(noisy,clean,kmeansK,indices,inidices_gt,sframes,iframes,ps)
         centroids,clusters,sizes = output
 
         # -- ave function --
-        ave = ave_fxn(clean,noisy,centroids,clusters,sizes)
+        ave = ave_fxn(noisy,clean,centroids,clusters,sizes,indices,ps)
 
-        # -- run kmeans for testing --
-        # kimg = burst if clean is None else clean
-        kimg = burst
-        # # centroids,sizes,ave = fill_ecentroids(burst,indices,ps,kmeansK)
-        # fgrid,alpha = sframes,2.
-        # fgrid = pick_fill_frames(sframes,nfsearch,t,alpha,s_iter,device)
-        # centroids,sizes,ave,rcl = fill_sframes_ecentroids(kimg,indices,fgrid,ps)
-        # clusters = None
-        # ave = rcl
+        # -- mode function --
+        cmodes = mode_fxn(std,c,ps,sizes)
         
-        # -- run kmeans --
-        # kimg = burst if clean is None else clean
-        # vprint(sframes)
-        # kmeans_out = sup_kmeans(burst,clean,indices,indices_gt,sframes,ps)
-        # pwd_mode = 0.#compute_mode(std,c,ps,type='pairs')
-        # # kmeans_out = run_ekmeans(kimg,indices,kmeansK,ps,pwd_mode,niters=8)
-        # km_dists,clusters,sizes,centroids,rcl = kmeans_out
-        # ave = rcl
+        # -- compute distance --
+        l2_vals = compute_ecentroid_edists(centroids,sizes,ave,nframes)
+        l2_vals /= Z_l2
+        vprint("l2_vals.shape: ",l2_vals.shape)
+        vprint("cmodes.shape: ",cmodes.shape)
+        vprint("sizes.shape: ",sizes.shape)
 
-        # ave = compute_ecentroid_ave(centroids,sizes)
-        # ave = compute_ecentroid_ave(centroids,sizes)
-        # ave = torch.nansum(centroids*sizes[None,...,None,None],dim=1)/nframes
-
-        # print(ave[0,10,8,9,0])
-        # print(centroids[0,:,10,8,9,0])
-        # print(clusters[:,10,8,9])
-        # exit()
-        
-        # print(centroids.shape)
-        # print(centroids[0,:,0,8,9].transpose(0,1))
-        # print(ave[0,0,8,9])
-        # exit()
-
-        # print(sizes.shape)
-        # exit()
-        # vprint("[burst] max,min: ",burst.max(),burst.min())
-        # vprint("[centroids] max,min: ",centroids.max(),centroids.min())
-        # ave = torch.mean(centroids,dim=0)
-        # centroids = torch.zeros_like(centroids)
-        # ave = torch.zeros_like(ave)
-        # print(sizes[:,0,8,7])
-        # print(sizes.shape)
-        # exit()
-
-        # print(clusters.shape)
-        # th_bincount(clusters,sframes)
-        # print(sizes.shape)
-        # exit()
+        # -- compute score for ranking --
+        scores = score_fxn(l2_vals,cmodes,sizes,nframes)
+        mvals = scores
 
         # -- [testing] ave --
-        kimg = burst if clean is None else clean
-        kimg = burst#clean
-        nframes = burst.shape[1]
-        tclusters,tsizes = init_clusters(nframes,nframes,indices.shape[2],h,w,device)
-        tcentroids = update_ecentroids(kimg,indices,tclusters,tsizes,ps)
-        if clusters is None: clusters = tclusters
+        # kimg = burst if clean is None else clean
+        # kimg = burst#clean
+        # nframes = burst.shape[1]
+        # tclusters,tsizes = init_clusters(nframes,nframes,indices.shape[2],h,w,device)
+        # tcentroids = update_ecentroids(kimg,indices,tclusters,tsizes,ps)
+        # if clusters is None: clusters = tclusters
         # ave = tcentroids[:,ref]
-
-        # -- compute modes --
-        cmodes,_ = compute_mode(std,c,ps,sizes,type='centroids')
-        # cmodes /= 2
-        # _mode = compute_mode(std,c,ps,t,type='burst')
-        # vprint(_mode)
-        # vprint(cmodes[0,0,0,0])
-        # cmodes[...] = _mode*Z_l2
-        # cmodes = torch.mean(cmodes,dim=0)
-        # cmodes = torch.mean(cmodes,dim=0)*Z_l2
-        # vprint(cmodes)
-        cmodes = torch.zeros_like(cmodes)
 
         # -- compute difference --
         # vprint(torch.any(torch.isnan(centroids)))
         # vprint(torch.any(torch.isnan(ave)))
         # l2_vals = compute_ecentroid_dists(centroids,sizes,ave)
-        l2_vals = compute_ecentroid_edists(centroids,sizes,ave,t)
-        l2_vals /= Z_l2
-        vprint("l2_vals.shape: ",l2_vals.shape)
-        vprint("cmodes.shape: ",cmodes.shape)
-        vprint("sizes.shape: ",sizes.shape)
 
         # vprint(cmodes[:,0,4,5])
         # vprint(l2_vals[:,:,8,9])

@@ -1,10 +1,10 @@
 
 import torch
-from .utils import get_optional_field
+from .utils import get_optional_field,parse_ctype
 
 def get_cluster_function(testing):
     choice = get_optional_field(testing,"cluster","fill")
-    ctype = get_optional_field(testing,"centroid_type","noisy")
+    ctype = get_optional_field(testing,"cluster_centroid_type","noisy")
     offset = get_optional_field(testing,"km_offset",0.)
     km_iters = get_optional_field(testing,"km_iters",10)
     if choice == "fill":
@@ -15,13 +15,6 @@ def get_cluster_function(testing):
         return get_kmeans(ctype,offset,km_iters)
     else:
         raise ValueError("Uknown [cluster] function [{choice}]")
-
-def parse_ctype(ctype,noisy,clean):
-    cimg = None
-    if ctype == "clean": cimg = clean
-    elif ctype == "noisy": cimg = noisy
-    else: raise ValueError(f"unknown [centroid type] param [{ctype}]")
-    return cimg
 
 def get_fill_cycle(ctype):
 

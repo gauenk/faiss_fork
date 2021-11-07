@@ -18,6 +18,13 @@ from warp_utils import warp_burst_from_locs,warp_burst_from_pix
 th_pad = torchvision.transforms.functional.pad
 
 
+def parse_ctype(ctype,noisy,clean):
+    cimg = None
+    if ctype == "clean": cimg = clean
+    elif ctype == "noisy": cimg = noisy
+    else: raise ValueError(f"unknown [centroid type] param [{ctype}]")
+    return cimg
+
 def get_optional_field(pydict,field,default):
     if pydict is None: return default
     if not(isinstance(pydict,dict)): raise TypeError("pydict must be a dict.")
