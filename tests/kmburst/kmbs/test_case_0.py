@@ -120,9 +120,8 @@ def nnf_search_and_warp(noisy,clean,patchsize,nsearch_xy,std,
 
     # -- post process data --
     vals = nnf_vals[:,0]
-    # inds = pix2flow(nnf_locs)
-    print("nnf_locs.shape: ",nnf_locs.shape)
-    inds = flow2pix(nnf_locs)
+    # inds = flow2pix(nnf_locs)
+    inds = torch.flip(nnf_locs,dims=(-1,))
     inds = rearrange(inds,'t 1 h w 1 two -> two t h w')
 
     # -- to device --
@@ -150,15 +149,12 @@ def kmb_search_and_warp(noisy,clean,patchsize,nsearch_xy,std,
     runtime = time.perf_counter() - start_time
 
     # -- post process data --
-    inds = rearrange(_locs,'1 1 t h w two -> t 1 h w 1 two')
-    print("_locs.shape: ",_locs.shape)
-    # inds = flow2pix(inds)
-    inds = rearrange(inds,'t 1 h w 1 two -> two t h w')
     vals = _vals[0]
-    print("inds.shape: ",inds.shape)
-    print(agg_inds.gt[:,:,8,7])
-    print(inds[:,:,8,7])
-    exit()
+    inds = rearrange(_locs,'1 1 t h w two -> t 1 h w 1 two')
+    _locs = rearrange(_locs,'1 1 t h w two -> two t h w')
+    inds = flow2pix(inds)
+    inds = rearrange(inds,'t 1 h w 1 two -> two t h w')
+    inds = torch.flip(inds,dims=(0,))
 
     # -- to device --
     vals = vals.to(device)

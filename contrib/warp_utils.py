@@ -29,49 +29,63 @@ def loc_index_names(nimages,h,w,k,device):
     locs_ref = torch.IntTensor(locs_ref).to(device,non_blocking=True)
     return locs_ref
 
-def locs2flow(locs):
-    two = locs.shape[-1]
-    assert two == 2,"get locs"
-    # flows = rearrange(locs,'t i h w p two -> p i (h w) t two')
-    flows_y = -locs[...,0]
-    flows_x = locs[...,1]
-    flows = torch.stack([flows_x,flows_y],dim=-1)
-    return flows
-
 def flow2pix(flow):
-    return flow2locs(flow)
-
-def flow2locs(flow):
-    # flow = rearrange(flow,'t i h w p two -> p i (h w) t two')
-    locs_y = flow[...,0]
-    locs_x = -flow[...,1]
-    locs = torch.stack([locs_x,locs_y],dim=-1)
-    return locs
+    t,i,h,w,s,two = flow.shape
+    coords = get_img_coords(t,s,h,w).to(flow.device)
+    coords = rearrange(coords,'two t 1 h w -> t 1 h w 1 two')
+    pix_y,pix_x = flow[...,0],-flow[...,1]
+    pix = torch.stack([pix_x,pix_y],dim=-1)
+    pix += coords
+    return pix
 
 def pix2flow(pix):
 
     # -- pix2locs --
-    locs = pix2locs(pix)
+    t,i,h,w,s,two = pix.shape
+    coords = get_img_coords(t,s,h,w).to(pix.device)
+    coords = rearrange(coords,'two t 1 h w -> t 1 h w 1 two')
+    locs = pix - coords
 
     # -- flip --
-    flow_x = locs[...,0]
-    flow_y = locs[...,1]
-    flow = torch.stack([flow_y,-flow_x],dim=-1)
+    flow_y = locs[...,0]
+    flow_x = locs[...,1]
+    flow = torch.stack([flow_x,-flow_y],dim=-1)
 
     return flow
 
 def pix2locs(pix):
-    nframes,nimages,h,w,k,two = pix.shape
-    lnames = loc_index_names(1,h,w,k,pix.device)
-    # -- (y,x) -> (x,y) --
-    pix_y = pix[...,0]
-    pix_x = pix[...,1]
-    pix = torch.stack([pix_x,pix_y],dim=-1)
+    # -- get coords --
+    t,i,h,w,s,two = pix.shape
+    coords = get_img_coords(t,s,h,w).to(pix.device)
+    coords = rearrange(coords,'two t 1 h w -> t 1 h w 1 two')
+    # loc_index_names(1,h,w,k,pix.device)
 
-    # -- (x_new,y_new) -> (x_offset,y_offset) --
-    locs = pix - lnames
+    # -- add --
+    locs = pix - coords
+
     return locs
 
+def locs2pix(locs):
+    # -- get coords --
+    t,i,h,w,s,two = locs.shape
+    coords = get_img_coords(t,s,h,w).to(locs.device)
+    coords = rearrange(coords,'two t 1 h w -> t 1 h w 1 two')
+    # loc_index_names(1,h,w,k,pix.device)
+
+    # -- add --
+    pix = locs + coords
+
+    return pix
+
+def flow2locs(flow):
+    pix = flow2pix(flow)
+    locs = locs2pix(pix)
+    return locs
+
+def locs2flow(locs):
+    pix = locs2pix(locs)
+    flow = pix2flow(pix)
+    return flow
 
 # ------------------------------
 #
@@ -121,8 +135,10 @@ def warp_burst_from_pix_4d_burst(burst,pix):
     assert two == 2,"Input shape starts with two."
 
     # -- pix 2 locs --
-    coords = get_img_coords(nframes,nsearch,h,w)
-    locs = pix - coords.to(pix.device)
+    pix = rearrange(pix,'two t s h w -> t 1 h w s two')
+    locs = pix2locs(pix)
+    locs = rearrange(locs,'t 1 h w s two -> two t s h w')
+
     return warp_burst_from_locs_4d_burst(burst,locs,None)
 
 def warp_burst_from_locs(burst,locs,isize=None):

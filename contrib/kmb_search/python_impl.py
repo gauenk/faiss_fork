@@ -317,7 +317,7 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         indices_match_s = indices_match_s.type(torch.float)
         # vprint("indices_match.shape: ",indices_match_s.shape)
         indices_match.append(indices_match_s)
-        if s_iter == 0: exit()
+        # if s_iter == 0: exit()
 
     indices_match = torch.stack(indices_match,dim=0)[:,:,None]
     for t in range(indices_match.shape[1]):
