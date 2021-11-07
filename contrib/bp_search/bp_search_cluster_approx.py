@@ -123,16 +123,16 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     pixPad = (wnoisy.shape[-1] - noisy.shape[-1])//2
     ppix = padLocs(pix+pixPad,pixPad)
     plocs = padLocs(locs,pixPad)
-    print(wnoisy.shape)
-    print(noisy.shape)
-    print(plocs.shape)
+    # print(wnoisy.shape)
+    # print(noisy.shape)
+    # print(plocs.shape)
 
-    print("pre warp!")
-    warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,l2_pisize)
-    warped_clean = warp_burst_from_locs(wclean,plocs,1,l2_pisize)
+    # print("pre warp!")
+    warped_noisy = warp_burst_from_locs(wnoisy,plocs,l2_pisize)
+    warped_clean = warp_burst_from_locs(wclean,plocs,l2_pisize)
     img_shape[0] = wnoisy.shape[-3]
-    print("post warp!")
-    print(warped_noisy.shape)
+    # print("post warp!")
+    # print(warped_noisy.shape)
     
     hP,wP = h + 2*pixPad,w + 2*pixPad
     pad_search_ranges = create_search_ranges(nblocks,hP,wP,nframes)
@@ -149,13 +149,13 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     sub_vals = l2_vals
     sub_locs_rs = l2_locs
     psHalf = patchsize//2
-    print("pre eval.")
-    print(wnoisy.shape)
-    print(sub_locs_rs.shape)
-    print(img_shape)
+    # print("pre eval.")
+    # print(wnoisy.shape)
+    # print(sub_locs_rs.shape)
+    # print(img_shape)
     vals,e_locs = evalAtLocs(wnoisy,sub_locs_rs, 1,
                              l2_nblocks,img_shape=img_shape)
-    print("post eval.")
+    # print("post eval.")
 
     # -------------------------------
     #
@@ -194,7 +194,7 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
     niters = len(clK)
     for i in range(niters):
 
-        print("pre cluster!")
+        # print("pre cluster!")
         # -- 1.) cluster each pixel across time --
         if False and groups_known:
             # -- known groups --
@@ -218,7 +218,7 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
             refGroup = refG
         # print("names.shape: ",names.shape)
         # print("ud_names.shape: ",ud_names.shape)
-        print("post cluster!")
+        # print("post cluster!")
         
         # -- 2.) create combinatorial search blocks from search ranges  --
         pad_locs = padLocs(locs,nbHalf,'extend')
@@ -243,7 +243,7 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
         # exit()
 
         # -- 3.) apprx exh srch over a clusters --
-        print("\n\n\n\n Approx. \n\n\n\n")
+        # print("\n\n\n\n Approx. \n\n\n\n")
         sub_vals,sub_locs = runBpSearchApproxExh(wmeans,1,nblocks,k=1,
                                                  valMean=0.,#mode,
                                                  ref=refGroup,
@@ -251,7 +251,7 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
                                                  blockLabels=None,#search_blocks,
                                                  niters=3,
                                                  img_shape = img_shape)
-        print("post approx.")
+        # print("post approx.")
         # print("search_blocks.shape: ",search_blocks.shape)
         # print("wnoisy.shape: ",wnoisy.shape)
         # sub_vals,sub_locs = runSubBurstNnf(wmeans,1,nblocks,k=1,
@@ -260,26 +260,26 @@ def runBpSearchClusterApprox(noisy, clean, patchsize, nblocks, k = 1,
         #                                    img_shape = img_shape)
         # sub_vals,sub_locs = runSubBurstNnf(noisy,patchsize,nblocks,k=1)
         # sub_locs = rearrange(sub_locs,'i t h w k two -> t i h w k two')
-        print("sub_locs.shape: ",sub_locs.shape)
-        print("locs.shape: ",locs.shape)
-        print("[a]: ",sub_vals[0,16,16,0].item())
-        print("[a]:\n",sub_locs[:,0,16,16,0,:])
+        # print("sub_locs.shape: ",sub_locs.shape)
+        # print("locs.shape: ",locs.shape)
+        # print("[a]: ",sub_vals[0,16,16,0].item())
+        # print("[a]:\n",sub_locs[:,0,16,16,0,:])
 
         # -- formatting --
         sub_locs = sub_locs.type(torch.long)
-        print("Complete.")
+        # print("Complete.")
         esub_locs = update_state_locs(locs,sub_locs,ud_names)
         locs = esub_locs
 
-        print("pre warped.")
+        # print("pre warped.")
         plocs = padLocs(locs,pixPad)
-        print("wnoisy.shape: ",wnoisy.shape)
-        print("plocs.shape: ",plocs.shape)
-        print("locs.shape: ",locs.shape)
-        print("pixPad: ",pixPad)
-        print(pisize)
-        warped_noisy = warp_burst_from_locs(wnoisy,plocs,1,pisize)
-        print("post warped.")
+        # print("wnoisy.shape: ",wnoisy.shape)
+        # print("plocs.shape: ",plocs.shape)
+        # print("locs.shape: ",locs.shape)
+        # print("pixPad: ",pixPad)
+        # print(pisize)
+        warped_noisy = warp_burst_from_locs(wnoisy,plocs,pisize)
+        # print("post warped.")
 
         # print("-"*30)
         # print(locs[:,0,16,16,0,:])

@@ -17,6 +17,24 @@ from bp_search import create_mesh_from_ranges
 from warp_utils import warp_burst_from_locs,warp_burst_from_pix
 th_pad = torchvision.transforms.functional.pad
 
+
+def get_optional_field(pydict,field,default):
+    if pydict is None: return default
+    if not(isinstance(pydict,dict)): raise TypeError("pydict must be a dict.")
+    if not(field in pydict): return default
+    return pydict[field]
+
+def get_gt_info(gt_info):
+    if not(gt_info is None):
+        if "clean" in gt_info:
+            clean = gt_info['clean']
+        if "indices" in gt_info:
+            indices_gt = gt_info['indices']
+    else:
+        clean = None
+        indices_gt = None
+    return clean,indices_gt
+
 def tiled_search_frames(nframes,nfsearch,nsiters,ref):
     assert nfsearch <= nframes,"must search leq nframes"
     sframes = torch.zeros(nsiters,nfsearch)
@@ -61,14 +79,19 @@ def mesh_from_ranges(search_ranges,search_frames,curr_blocks,ref):
     blocks = repeat(blocks,'two t h w -> two t b h w',b=nblocks)
     for group,frame in enumerate(search_frames):
         # if frame == ref: continue
-        if group == m_ref: continue
+        # if group == m_ref: continue
+        # if group == ref: continue
         blocks[:,frame] = mesh[:,group]
     
-    print("-"*30)
-    print(ref)
-    print(mesh[:,:,:5,4,5].transpose(0,-1))
-    print(blocks[:,:,:5,4,5].transpose(0,-1))
-    print(search_ranges.shape)
+    # print("-"*30)
+    # print("ref, nblocks: ",ref,nblocks)
+    # print("mesh.shape: ",mesh.shape)
+    # print("blocks.shape: ",blocks.shape)
+    # # print(mesh[:,:,:,4,5].transpose(1,2).transpose(0,1))
+    # for s in range(blocks.shape[2]):
+    #     print(blocks[:,:,[s],4,5].transpose(1,2).transpose(0,1).cpu().numpy())
+    # print(search_ranges.shape)
+    # exit()
 
     return blocks
 
@@ -120,4 +143,72 @@ def init_zero_locs(nframes,nimages,h,w):
 def compute_l2_mode(std,patchsize):
     return 0.
 
+def divUp(a,b): return (a-1)//b+1
+
+def initialize_indices(coords,search_ranges,indices_gt):
+
+
+    #
+    # -- use the coords --
+    #
+
+    # vprint(rinit.shape,search_ranges.shape)
+    # curr_indices = torch.zeros_like(search_ranges)
+    curr_indices = search_ranges[:,:,0]
+    # curr_indices = coords.clone()
+    # vprint("curr_indices.shape: ",curr_indices.shape)
+    # coords.clone() --> (2,t,h,w)
+
+    #
+    # -- random inits --
+    #
+
+    # rinit = search_ranges.shape[2]//2
+    # rmax = search_ranges.shape[2]
+    # rinit = torch.randint(0,rmax,(t,1,h,w)).to(device)
+
+    #
+    # -- search ranges --
+    #
+
+    # curr_indices[0] = torch.gather(search_ranges[0],dim=1,index=rinit)
+    # curr_indices[1] = torch.gather(search_ranges[1],dim=1,index=rinit)
+    # curr_indices = curr_indices.type(torch.long)
+    # curr_indices = curr_indices[:,:,0]
+    # curr_indices = indices_gt.clone()
+
+    return curr_indices
+
+def pick_fill_frames(sframes,nfsearch,t,alpha,s_iter,device):
+    
+    # -- simulate rand nums --
+    # alpha = 5-2./(math.log10(s_iter+1)+1)
+    alpha = 5-2./(s_iter+1.)
+    # alpha = 2
+    beta = torch.distributions.beta.Beta(alpha,1)
+    rand = beta.sample().item()
+    # print(alpha,rand)
+    # rand = torch.rand(1).item()
+    # rand = int(rand*(t-nfsearch-1))
+    rand = int(rand*(t-nfsearch-1))
+    fgrid = np.arange(t)
+    sframes_np = sframes.cpu().numpy()
+    sframes_set = set(list(sframes_np))
+    sframes_not = set(list(fgrid))
+    sframes_not = sframes_not - sframes_set
+    sframes_not = np.sort(list(sframes_not))
+    fgrid = np.random.choice(sframes_not,rand,replace=False)
+    fgrid = np.sort(np.concatenate([fgrid,sframes_np]))
+
+    # -- fill with all frames after time --
+    # coin_flip = torch.rand(1).item()
+    # if s_iter > 20 and coin_flip > 0.5:
+    #     fgrid = torch.arange(nframes).to(device)
+
+
+    # -- to torch --
+    fgrid = torch.LongTensor(fgrid).to(device)
+
+    return fgrid
+        
 

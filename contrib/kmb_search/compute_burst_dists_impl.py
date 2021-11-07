@@ -114,21 +114,21 @@ def compute_ecentroid_edists_numba(vals,centroids,sizes,ave,t):
     """
     tK,s,h,w = vals.shape
     f,tK,s,h,w,ps,ps = centroids.shape
-    F_MAX = 10000.
+    eps,F_MAX = 1e-8,np.nan
     for hi in prange(h):
         for wi in prange(w):
             for si in prange(s):
                 # -- P*P*F*(C+1) --
                 for ci in range(tK):
                     size = sizes[ci][si][hi][wi]
-                    vsize = size > 0 and size < t
+                    vsize = size > 0 and size <= t
                     for fi in range(f):
                         for pi in range(ps):
                             for pj in range(ps):
                                 cent = centroids[fi][ci][si][hi][wi][pi][pj]
                                 ave_f = ave[fi][si][hi][wi][pi][pj]
                                 vals[ci][si][hi][wi] += (cent - ave_f)**2
-                    val = vals[ci][si][hi][wi]
+                    val = vals[ci][si][hi][wi]#*size#/tK#/(size+eps)
                     val = val if vsize else F_MAX
                     vals[ci][si][hi][wi] = val
 

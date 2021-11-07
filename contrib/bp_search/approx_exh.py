@@ -135,7 +135,7 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
     # -- 5.) warp burst to top location --
     pixPad = (tnoisy.shape[-1] - img_shape[-1])//2
     plocs = padLocs(locs,pixPad,'extend')
-    warped_noisy = warp_burst_from_locs(tnoisy,plocs,1,psize)[0]
+    warped_noisy = warp_burst_from_locs(tnoisy,plocs,psize)[0]
 
     # -- compute search ranges for number of search frames --
     ngroups = numSearch+1
@@ -229,7 +229,7 @@ def runBpSearchApproxExh(noisy, patchsize, nblocks, k = 1,
         pad_locs = padLocs(locs,nbHalf,'extend')
         nframes,nimages,hP,wP,k,two = pad_locs.shape
         warped_noisy_old = warped_noisy.clone()
-        warped_noisy = warp_burst_from_locs(tnoisy,pad_locs,nblocks,psize)[0]
+        warped_noisy = warp_burst_from_locs(tnoisy,pad_locs,psize)[0]
 
         delta = torch.sum(torch.abs(prev_locs - locs)).item()
         # print("Delta: ",delta)

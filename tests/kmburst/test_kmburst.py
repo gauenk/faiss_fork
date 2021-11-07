@@ -25,7 +25,7 @@ sys.path.append("/home/gauenk/Documents/experiments/cl_gen/lib")
 from pyutils import save_image
 from pyutils.images import images_to_psnrs,images_to_psnrs_crop
 from align import nnf 
-from align.xforms import pix_to_blocks,align_from_flow
+from align.xforms import pix_to_blocks,align_from_flow,pix_to_flow
 from datasets.transforms import get_dynamic_transform
 
 # -- faiss-python imports --
@@ -36,7 +36,7 @@ import bnnf_utils as bnnf_utils
 import sub_burst as sbnnf_utils
 from bp_search import runBpSearch
 from nnf_share import padAndTileBatch,padBurst,tileBurst
-from warp_utils import warp_burst_from_locs,warp_burst_from_pix
+from warp_utils import warp_burst_from_locs,warp_burst_from_pix,warp_burst_from_flow
 from warp_utils import pix2locs,locs2flow,flow2locs
 from kmb_search import runKmSearch,compute_mode_pairs
 from kmb_search.testing.utils import compute_gt_burst,set_seed
@@ -46,24 +46,25 @@ def exp_setup():
     # seed = 345
     seed = 456
     # seed = 678
+    # seed = 789
     set_seed(seed)
     
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
-    # h,w,c = 16,16,3
+    h,w,c = 16,16,3
     # h,w,c = 17,17,3
     # h,w,c = 512,512,3
     # h,w,c = 256,256,3
     # h,w,c = 128,128,3
     # h,w,c = 64,64,3
-    h,w,c = 16,16,3
+    # h,w,c = 16,16,3
     # h,w,c = 15,15,2
     # h,w,c = 47,47,3
     # h,w,c = 32,32,3
     # h,w,c = 1024,1024,3
     # h,w,c = 32,32,3
     # ps,nblocks = 11,10
-    patchsize = 5
+    patchsize = 3
     nblocks = 3
     k = 3#(nblocks**2)**2
     gpuid = 0
@@ -86,7 +87,7 @@ def test_burst_nnf_sample():
     # -- apply dynamic xform --
     dynamic_info = edict()
     dynamic_info.mode = 'global'
-    dynamic_info.nframes = 9
+    dynamic_info.nframes = 15
     dynamic_info.ppf = 1
     dynamic_info.frame_size = [h,w]
     dyn_xform = get_dynamic_transform(dynamic_info,None)
@@ -116,18 +117,21 @@ def test_burst_nnf_sample():
     ref = t//2
 
     # -- format data --
-    std = 20.
+    std = 50.
     noise = np.random.normal(loc=0,scale=std/255.,size=(t,1,c,h,w)).astype(np.float32)
     clean = burst.clone()
     repimage = repeat(clean[ref],'1 c h w -> t 1 c h w',t=t).clone()
-    # burst += torch.FloatTensor(noise).to(device)
+    burst += torch.FloatTensor(noise).to(device)
     block = np.c_[-flow[:,1],flow[:,0]] # (dx,dy) -> (dy,dx) with "y" [0,M] -> [M,0]
+    block_gt = block
+    flow_gt = flow
     print("-- block --")
     print(block)
     print("-- flow --")
     print(flow)
     nframes,nimages,c,h,w = burst.shape
     isize = edict({'h':h,'w':w})
+    flows_hw = repeat(flow,'t two -> 1 h w t two',h=h,w=w)
     flows = repeat(flow,'t two -> 1 p t two',p=h*w)
     blocks_gt = repeat(block,'t two ->  two t h w',h=h,w=w)
     coords = get_img_coords(t,1,h,w)[:,:,0].to(device)
@@ -137,7 +141,7 @@ def test_burst_nnf_sample():
     save_image("tkmb_clean.png",clean)
     save_image("tkmb_repimage.png",repimage)
     save_image("tkmb_aligned.png",aligned)
-    psnrs = images_to_psnrs_crop(aligned,repimage,3)
+    psnrs = images_to_psnrs_crop(aligned,repimage,ps)
     print("GT PSNRS [aligned vs repimage]: ",psnrs)
     psnrs = images_to_psnrs(clean,repimage)
     print("GT PSNRS [clean v.s. repimage: ",psnrs)
@@ -171,7 +175,7 @@ def test_burst_nnf_sample():
     #
     # ------------------------------
 
-    valMean = compute_mode_pairs(std/255.,c,patchsize)
+    valMean = 0.#compute_mode_pairs(std/255.,c,patchsize)
     print("valMean: ",valMean)
     start_time = time.perf_counter()
     nnf_vals,nnf_locs = nnf_utils.runNnfBurst(burst, patchsize,
@@ -183,7 +187,7 @@ def test_burst_nnf_sample():
     locs.L2Local = pix2locs(nnf_locs)
     # print("locs.L2Local.shape: ",locs.L2Local.shape)
     warp = warp_burst_from_locs(clean,locs.L2Local)[0]    
-    psnrs = images_to_psnrs_crop(warp[:,0],repimage[:,0],2)
+    psnrs = images_to_psnrs_crop(warp[:,0],repimage[:,0],ps)
     print("-- [L2Local.psnrs] --")
     print(psnrs)
     save_image("tkmb_l2_warp.png",warp)
@@ -197,12 +201,12 @@ def test_burst_nnf_sample():
     print("-"*30)
     print("KMeans Burst")
     print("-"*30)
-    gt_info = {'indices':indices_gt}
+    gt_info = {'indices':indices_gt,'clean':clean[:,0].transpose(0,1)}
     gt_dist = 0.
     start_time = time.perf_counter()    
     _vals,_locs = runKmSearch(burst, patchsize,nblocks, k = k,
                               std = std/255.,search_space=None,
-                              ref=None,python=True,gt_info=gt_info)
+                              ref=None,mode="python",gt_info=gt_info)
     runtimes.KmBurst = time.perf_counter() - start_time
     print("_vals.shape: ",_vals.shape)
     print("_locs.shape: ",_locs.shape)
@@ -215,13 +219,41 @@ def test_burst_nnf_sample():
     # locs.shape: (i,k,t,h,w,2)
     vals.KmBurst = _vals[0,0]
     locs.KmBurst = _locs[0,0]
-    print(_locs[0,0,:,4,4,:])
+    # print(_locs[0,0,:,4,4,:])
     wlocs = rearrange(_locs,'i k t h w two -> t i h w k two')
-    warp = warp_burst_from_locs(clean,wlocs)[0]    
-    psnrs = images_to_psnrs_crop(warp[:,0],repimage[:,0],2)
+    warp = warp_burst_from_flow(clean,wlocs)[0]
+    # warp = warp_burst_from_locs(clean,wlocs)[0]    
+    psnrs = images_to_psnrs_crop(warp[:,0],repimage[:,0],ps)
     print("-- [KmBurst.psnrs] --")
     print(psnrs)
     save_image("tkmb_warp.png",warp)
+
+    # -- delta flow --
+    print("-- compare with gt flow --")
+    flows_kmb = locs.KmBurst
+    flows_hw = rearrange(flows_hw,'1 h w t two -> t h w two')
+    print(flows_kmb.shape,flows_hw.shape)
+    for t in range(flows_hw.shape[0]):
+        delta = torch.abs(flows_hw[t] - flows_kmb[t])
+        delta = delta.type(torch.float).mean()
+        print("[%d] Delta: %2.3f" %(t,delta))
+
+    # -- for exps --
+    print("locs.KmBurst.shape: ",locs.KmBurst.shape)
+    t,h,w,two = locs.KmBurst.shape
+    flows_fmt = rearrange(locs.KmBurst,'t h w two -> 1 (h w) t two').clone()
+    isize = edict({'h':h,'w':w})
+    # flows = pix_to_flow(locs_fmt)
+    
+    aligned = align_from_flow(clean,flows_fmt,0,isize=isize)
+    # aligned = align_from_flow(burst,flows_fmt,patchsize,isize=isize)
+    psnrs = images_to_psnrs_crop(aligned[:,0],repimage[:,0],ps)
+    print("-- [exp-pipe] [KmBurst.psnrs] --")
+    print(psnrs)
+
+    print(" -- locs.KmBurst --")
+    print(locs.KmBurst[:,8,9,:])
+
     return
 
     # locs.KmBurst = _locs[0]

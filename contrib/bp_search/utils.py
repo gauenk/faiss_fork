@@ -269,7 +269,8 @@ def flow_to_groups(flow):
     return groups,ngroups
 
 def smooth_locs(locs,nclusters=3,window=16,stride=8):
-    return smooth_locs_global(locs,nclusters=nclusters)
+    return locs
+    # return smooth_locs_global(locs,nclusters=nclusters)
     # return smooth_locs_patches(locs,window=16,stride=8)
 
 def smooth_locs_patches(locs,window=16,stride=8):
@@ -316,7 +317,7 @@ def smooth_locs_global(locs,nclusters=3):
 
 
     # -- unfold into patched regions --
-    print("locs.shape: ",locs.shape)
+    # print("locs.shape: ",locs.shape)
     locs_fmt = rearrange(locs,'t i h w two -> (t i) (h w) two')
     locs_fmt = locs_fmt.contiguous().type(torch.float)
 
@@ -328,7 +329,7 @@ def smooth_locs_global(locs,nclusters=3):
     from skimage import measure
     from skimage.morphology import remove_small_objects,remove_small_holes,opening,closing
 
-    print("coins.shape: ",data.coins().shape)
+    # print("coins.shape: ",data.coins().shape)
 
 
     # locs_img = rearrange(locs,'t i h w two -> (t i) two h w').type(torch.float)
@@ -348,7 +349,7 @@ def smooth_locs_global(locs,nclusters=3):
 
     locs_img_save = rearrange(locs_img,'t i h w -> (t i) 1 h w').type(torch.float)
     save_image("token_locs.png",locs_img_save)
-    print(locs_img.min(),locs_img.max())
+    # print(locs_img.min(),locs_img.max())
 
 
     # -- fill holes --
@@ -422,8 +423,6 @@ def smooth_locs_global(locs,nclusters=3):
     # save_image("seg.png", seg)
     # save_image("labels.png", labels)
 
-    exit()
-    
     
     # names,means,counts,dists = KMeans(locs_fmt, K=nclusters,
     #                                   Niter=10, verbose=False, randDist=0.)
@@ -452,7 +451,6 @@ def smooth_locs_global(locs,nclusters=3):
 
     save_locs = rearrange(olocs,'t i h w 1 two -> (t i) two h w')
     save_image("smoothed_locs.png",save_locs.type(torch.float))
-    exit()
 
 
     return olocs

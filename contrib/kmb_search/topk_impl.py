@@ -99,13 +99,13 @@ def kmb_topk_update(propDists,prevDists,propModes,prevModes,
     # print("propModes.shape: ",propModes.shape)
     
     # -- insert proposed into prev --
-    b = propDists.shape[1]
-    propDists_raw = propDists.clone()
-    propModes_raw = propModes.clone()
-    propDists = prevDists.clone().repeat(1,b,1,1)
-    propModes = prevModes.clone().repeat(1,b,1,1)
-    propDists[propSFrames] = propDists_raw
-    propModes[propSFrames] = propModes_raw
+    # b = propDists.shape[1]
+    # propDists_raw = propDists.clone()
+    # propModes_raw = propModes.clone()
+    # propDists = prevDists.clone().repeat(1,b,1,1)
+    # propModes = prevModes.clone().repeat(1,b,1,1)
+    # propDists[propSFrames] = propDists_raw
+    # propModes[propSFrames] = propModes_raw
 
     # -- create stacks --
     aug_vals = torch.cat([prevDists,propDists],dim=1)
@@ -153,17 +153,21 @@ def kmb_topk(vals,modes,inds,K):
 
     # -- run pytorch topk --
     mvals = torch.nanmean(torch.abs(vals - modes),dim=0)
-    print("inds.shape: ",inds.shape)
-    print("mvals.shape: ",mvals.shape)
-    print(inds[:,:,0,4,5])
-    # print(inds[:,:,1,4,5])
-    # print(inds[:,:,5,4,5])
-    print(mvals[:,4,5])
-    print(vals[:,:,4,5])
-    print(vals[:,:,4,5].shape)
+    # print("-- pre top k --")
+    # print("inds.shape: ",inds.shape)
+    # print("mvals.shape: ",mvals.shape)
+    # print(inds[:,:,0,4,5])
+    # print(mvals[:,4,5])
+    # print(vals[:,:,4,5])
+    # print(vals[:,:,4,5].shape)
     vals_topk,modes_topk,inds_topk = topk_torch(mvals,vals,modes,inds,K)
     # print("inds_topk.shape: ",inds_topk.shape)
     # print(inds_topk[:,:,0,9,6])
+
+    # print("-- post top k --")
+    # print("vals_topk.shape: ",vals_topk.shape)
+    # print(inds_topk[:,:,0,4,5])
+    # print(vals_topk[:,:,4,5])
 
     # -- launch numba --
     # kmb_topk_numba(vals,inds,vals_topk,inds_topk)
@@ -216,7 +220,10 @@ def topk_torch_rand(mvals,vals,modes,inds,s_iter,K=1):
     return index_topk(vals,modes,inds,K,samples)
 
 def topk_torch(mvals,vals,modes,inds,K):
+    # print("pre")
     topk = torch.topk(mvals,K,dim=0,largest=False,sorted=True)
+    # torch.cuda.synchronize()
+    # print("post")
     return index_topk(vals,modes,inds,K,topk.indices)
     
 def index_topk(vals,modes,inds,K,indices):
@@ -225,18 +232,23 @@ def index_topk(vals,modes,inds,K,indices):
     tK = vals.shape[0]
     vals_topk = torch.zeros_like(vals)[:,:K]
     modes_topk = torch.zeros_like(modes)[:,:K]
-    for tk in range(tK):
-        vals_topk[tk] = torch.gather(vals[tk],dim=0,index=indices)
-        modes_topk[tk] = torch.gather(modes[tk],dim=0,index=indices)
+    # print(vals.shape,indices.shape,modes.shape,vals_topk.shape)
+    # exit()
+    # for tk in range(tK):
+    #     print(vals_topk.shape,vals.shape)
+    #     vals_topk[tk] = torch.gather(vals[tk],dim=0,index=indices)
+    #     modes_topk[tk] = torch.gather(modes[tk],dim=0,index=indices)
+    # exit()
+
     inds_topk = torch.zeros_like(inds)[:,:,:K]
     # print("inds.shape: ",inds.shape)
     # print("indices.shape: ",indices.shape)
-    print(inds[:,:,6,4,5])
-    print(indices[0,4,5])
+    # print(inds[:,:,6,4,5])
+    # print(indices[0,4,5])
     for i in range(inds.shape[0]):
         for t in range(inds.shape[1]):
             inds_topk[i,t] = torch.gather(inds[i,t],dim=0,index=indices)
-    print(inds_topk[:,:,0,4,5])
+    # print(inds_topk[:,:,0,4,5])
     return vals_topk,modes_topk,inds_topk
 
 

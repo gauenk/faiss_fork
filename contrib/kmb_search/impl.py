@@ -18,12 +18,13 @@ from nnf_share import padBurst,get_optional_device,getImage,getVals,getLocs,get_
 from torch_utils import using_stream
 from .utils import jitter_search_ranges
 from .python_impl import run_kmb_python
+from .cuda_impl import run_kmb_cuda
 
 def runKmBurstSearch(burst, patchsize, nsearch, k=1, kmeansK = 3,
                      std = None, ref = None, search_ranges=None,
-                     img_shape=None, to_flow=False,
-                     nsiters=None,nfsearch=None,
-                     fmt=False, python=False, gt_info=None):
+                     img_shape=None, to_flow=False, nsiters=None,
+                     nfsearch=None, fmt=False, mode="default",
+                     gt_info=None, testing=None):
     
     # -- create faiss GPU resource --
     res = faiss.StandardGpuResources()
@@ -47,7 +48,7 @@ def runKmBurstSearch(burst, patchsize, nsearch, k=1, kmeansK = 3,
         if not(search_ranges is None): search_ranges_i = search_ranges[i]
 
         # -- execute over search space! --
-        if python == True:
+        if mode == "python":
             vals_i,locs_i,modes_i = _runKmBurstSearchPython(res, burst_i,
                                                             patchsize, nsearch,
                                                             k = k, kmeansK = kmeansK,
@@ -55,7 +56,18 @@ def runKmBurstSearch(burst, patchsize, nsearch, k=1, kmeansK = 3,
                                                             nsiters=nsiters,
                                                             nfsearch=nfsearch,
                                                             search_ranges=search_ranges_i,
-                                                            gt_info=gt_info)
+                                                            gt_info=gt_info,
+                                                            testing=testing)
+        elif mode == "cuda":
+            vals_i,locs_i,modes_i = _runKmBurstSearchCuda(res, burst_i,
+                                                          patchsize, nsearch,
+                                                          k = k, kmeansK = kmeansK,
+                                                          std = std, ref = ref,
+                                                          nsiters=nsiters,
+                                                          nfsearch=nfsearch,
+                                                          search_ranges=search_ranges_i,
+                                                          gt_info=gt_info,
+                                                          testing=testing)
         else:
             vals_i,locs_i,modes_i = _runKmBurstSearch(res, burst_i, patchsize, nsearch,
                                                       k = k, kmeansK = kmeansK,
@@ -84,13 +96,21 @@ def runKmBurstSearch(burst, patchsize, nsearch, k=1, kmeansK = 3,
 def _runKmBurstSearchPython(res, burst , patchsize, nsearch,
                             k = 1, kmeansK = 3, std = None, ref = None,
                             nsiters=None,nfsearch=None,search_ranges=None,
-                            gt_info=None):
+                            gt_info=None,testing=None):
     vals,locs,modes = run_kmb_python(res, burst, patchsize, nsearch, k,
                                      kmeansK, std, ref, search_ranges,
                                      nsiters=nsiters, nfsearch=nfsearch,
-                                     gt_info=gt_info)
-    # vals = vals.cpu()
-    # locs = rearrange(locs,'two t k h w -> k t h w two').cpu()
+                                     gt_info=gt_info,testing=testing)
+    return vals,locs,modes
+
+def _runKmBurstSearchCuda(res, burst , patchsize, nsearch,
+                          k = 1, kmeansK = 3, std = None, ref = None,
+                          nsiters=None,nfsearch=None,search_ranges=None,
+                          gt_info=None,testing=None):
+    vals,locs,modes = run_kmb_cuda(res, burst, patchsize, nsearch, k,
+                                   kmeansK, std, ref, search_ranges,
+                                   nsiters=nsiters, nfsearch=nfsearch,
+                                   gt_info=gt_info,testing=testing)
     return vals,locs,modes
 
 def _runKmBurstSearch(res, burst , patchsize, nsearch,

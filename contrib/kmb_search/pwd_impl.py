@@ -85,10 +85,10 @@ def compute_epairwise_distance_numba(dists,burst,blocks,centroids,offset):
                         h_t1_s = hi - psHalf
                         w_t1_s = wi - psHalf
                         
-                        h_t0 = ps_select(h_t0_s,h-1,ps)
-                        w_t0 = ps_select(w_t0_s,w-1,ps)
-                        h_t1 = ps_select(h_t1_s,h-1,ps)
-                        w_t1 = ps_select(w_t1_s,w-1,ps)
+                        # h_t0 = ps_select(h_t0_s,h-1,ps)
+                        # w_t0 = ps_select(w_t0_s,w-1,ps)
+                        # h_t1 = ps_select(h_t1_s,h-1,ps)
+                        # w_t1 = ps_select(w_t1_s,w-1,ps)
 
                         blkH = blocks[0,t0,si,hi,wi]
                         blkW = blocks[1,t0,si,hi,wi]

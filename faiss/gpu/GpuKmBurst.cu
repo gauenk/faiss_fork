@@ -54,8 +54,7 @@ namespace faiss {
       auto burst = toDeviceTemporary<T, 4>(res,device,
 					   const_cast<T*>(reinterpret_cast<const T*>
 							  (args.burst)),
-					   stream,{args.c,args.t,
-						     args.h+2*psHalf,args.w+2*psHalf});
+					   stream,{args.c,args.t,args.h,args.w});
       auto sranges = toDeviceTemporary<int, 5>(res,device,args.search_ranges,stream,
 					       {2,args.t,args.nsearch,args.h,args.w});
       auto init_blocks = toDeviceTemporary<int, 3>(res,device,args.init_blocks,stream,

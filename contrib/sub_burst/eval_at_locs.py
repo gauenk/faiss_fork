@@ -35,9 +35,9 @@ def evalAtLocs(burst, locs, patchsize, nblocks,
     else:
         pad_locs = locs
         
-    print("img_shape: ",img_shape)
-    print("burst.shape :",burst.shape)
-    print("pad_locs.shape :",pad_locs.shape)
+    # print("img_shape: ",img_shape)
+    # print("burst.shape :",burst.shape)
+    # print("pad_locs.shape :",pad_locs.shape)
 
     # -- evaluate at block labels --
     pad_locs = rearrange(pad_locs,'t i h w s two -> s i h w t two')

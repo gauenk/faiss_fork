@@ -46,6 +46,7 @@ def choose_best(agg_vals,agg_locs,agg_modes,K):
     Choose the best.
 
     """
+    return agg_vals[0],agg_locs[0]
     agg_vals = torch.cat(agg_vals,dim=1)
     agg_locs = torch.cat(agg_locs,dim=3)
     agg_modes = torch.cat(agg_modes,dim=1)
@@ -63,8 +64,8 @@ def choose_best(agg_vals,agg_locs,agg_modes,K):
 
 def runKmSearch(burst,patchsize,nsearch_xy,k=1,std=None,
                 l2_patchsize=None,l2_nblocks=None,l2_k=None,
-                search_space=None,ref=None,python=False,
-                gt_info=None):
+                search_space=None,ref=None,mode="cuda",
+                gt_info=None,testing=None):
 
     # -- init vars --
     device = burst.device
@@ -109,11 +110,11 @@ def runKmSearch(burst,patchsize,nsearch_xy,k=1,std=None,
     for search_ranges_p in search_ranges:
         vals_p,locs_p,modes_p = runKmBurstSearch(burst, patchsize, nsearch,
                                                  k=1, kmeansK=3, ref = ref,
-                                                 std = std,
-                                                 nsiters=4,nfsearch=4,
+                                                 std = std,nsiters=4,nfsearch=4,
                                                  search_ranges = search_ranges_p,
-                                                 python=python,gt_info=gt_info)
-        print("vals_p.shape: ",vals_p.shape)
+                                                 mode=mode,gt_info=gt_info,
+                                                 testing=testing)
+        # print("vals_p.shape: ",vals_p.shape)
         agg_vals.append(vals_p)
         agg_locs.append(locs_p)
         agg_modes.append(modes_p)

@@ -172,20 +172,28 @@ def fill_sframes_ecentroids(burst,indices,sframes,ps):
     two,t,s,h,w = indices.shape
     tK = len(sframes)
 
+    # -- create outputs --
+    centroids = np.zeros((c,tK,s,h,w,ps,ps)).astype(np.float)
+    clusters = np.zeros((t,s,h,w)).astype(np.int)
+    sizes = np.zeros((tK,s,h,w)).astype(np.int)
+    clusters[...] = float("nan")
+
     # -- numba --
     burst = burst.cpu().numpy()
     indices = indices.cpu().numpy()
     sframes = sframes.cpu().numpy()
-    centroids = np.zeros((c,tK,s,h,w,ps,ps)).astype(np.float)
-    fill_ecentroids_numba(centroids,burst,indices,sframes)
+    fill_ecentroids_numba(centroids,clusters,sizes,burst,indices,sframes)
 
     # -- to torch --
     centroids = torch.FloatTensor(centroids)
     centroids = centroids.type(dtype).to(device)
-    sizes = torch.ones(tK,s,h,w).type(torch.int).to(device)
     ave = torch.mean(centroids,dim=1)
 
-    return centroids,sizes,ave
+    # -- ref centroid --
+    ref_cid = (t//2)%tK
+    ref_centroid = centroids[:,ref_cid]
+
+    return centroids,clusters,sizes,ave,ref_centroid
 
 # ------------------------------------------------
 #
@@ -201,31 +209,40 @@ def fill_ecentroids(burst,indices,ps,kmeansK):
     # -- unpack --
     dtype = burst.type()
     device = burst.device
-    c,t,h,w = burst.shape
     two,t,s,h,w = indices.shape
+    c,t,h,w = burst.shape
     tK = kmeansK
     sframes = np.arange(tk)
+
+    # -- create outputs --
+    centroids = np.zeros((c,tK,s,h,w,ps,ps)).astype(np.float)
+    clusters = np.zeros((t,s,h,w)).astype(np.int)
+    sizes = np.zeros((tK,s,h,w)).astype(np.int)
+    clusters[...] = float("nan")
 
     # -- numba --
     burst = burst.cpu().numpy()
     indices = indices.cpu().numpy()
     centroids = np.zeros((c,tK,s,h,w,ps,ps)).astype(np.float)
     assert t == tK, "num clusters must be eq to num frames for fill."
-    fill_ecentroids_numba(centroids,burst,indices,sframes)
+    fill_ecentroids_numba(centroids,clusters,sizes,burst,indices,sframes)
 
     # -- to torch --
     centroids = torch.FloatTensor(centroids)
     centroids = centroids.type(dtype).to(device)
-    sizes = torch.ones(tK,s,h,w).type(torch.int).to(device)
     ave = torch.mean(centroids,dim=1)
 
-    return centroids,sizes,ave
+    # -- ref centroid --
+    ref_cid = (t//2)%tK
+    ref_centroid = centroids[:,ref_cid]
+
+    return centroids,clusters,sizes,ave,ref_centroid
 
 @njit
-def fill_ecentroids_numba(centroids,burst,indices,sframes):
+def fill_ecentroids_numba(centroids,clusters,sizes,burst,indices,sframes):
 
     # -- shapes --
-    c,t,h,w = burst.shape
+    c,t,h_b,w_b = burst.shape
     c,tK,s,h,w,ps,ps = centroids.shape
     tK = centroids.shape[1]
     assert tK == len(sframes),"search frames and num centroids must match."
@@ -250,10 +267,8 @@ def fill_ecentroids_numba(centroids,burst,indices,sframes):
                                 bH = indices[0,tj,si,hi,wi]
                                 bW = indices[1,tj,si,hi,wi]
                                 top,left = bH-psHalf,bW-psHalf
-                                bH = bounds(top+pi,h-1)
-                                bW = bounds(left+pj,w-1)
+                                bH = bounds(top+pi,h_b-1)
+                                bW = bounds(left+pj,w_b-1)
                                 b = burst[ci,tj,bH,bW]
                                 centroids[ci,ti,si,hi,wi,pi,pj] = b
-                      
-              
-
+                    clusters[tj][si][hi][wi] = ti

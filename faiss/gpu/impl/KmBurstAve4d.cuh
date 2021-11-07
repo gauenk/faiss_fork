@@ -10,7 +10,7 @@ namespace faiss {
 		   Tensor<float, 3, true, int> ave,
 		   cudaStream_t stream);
     
-    void kmb_ave4d(Tensor<half, 4, true, int> centroids,
+    void kmb_ave4d(Tensor<half, 4, true, int> tensor,
 		   Tensor<half, 3, true, int> ave,
 		   cudaStream_t stream);
   }

@@ -63,7 +63,7 @@ def compute_ecentroid_ave_numba(centroids,sizes,ave):
                     for fi in range(f):
                         for pi in range(ps):
                             for pj in range(ps):
-                                cent = centroids[fi][ci][si][hi][wi][pi][pj]
+                                cent = centroids[fi][ci][si][hi][wi][pi][pj]*size/tK
                                 ave[fi][si][hi][wi][pi][pj] += cent
                 for fi in range(f):
                     for pi in range(ps):

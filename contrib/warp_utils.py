@@ -45,6 +45,18 @@ def flow2locs(flow):
     locs = torch.stack([locs_x,locs_y],dim=-1)
     return locs
 
+def pix2flow(pix):
+
+    # -- pix2locs --
+    locs = pix2locs(pix)
+
+    # -- flip --
+    flow_x = locs[...,0]
+    flow_y = locs[...,1]
+    flow = torch.stack([flow_y,-flow_x],dim=-1)
+
+    return flow
+
 def pix2locs(pix):
     nframes,nimages,h,w,k,two = pix.shape
     lnames = loc_index_names(1,h,w,k,pix.device)
@@ -60,9 +72,13 @@ def pix2locs(pix):
 
 # ------------------------------
 #
-#    Warp Burst From Pix
+#    Warp Burst From Pix/Flow
 #
 # ------------------------------
+
+def warp_burst_from_flow(burst,flow,pad=None):
+    locs = flow2locs(flow)
+    return warp_burst_from_locs(burst,locs,pad)
 
 def warp_burst_from_pix(burst,pix,pad=None):
     ndim = burst.dim()
@@ -120,8 +136,12 @@ def warp_burst_from_locs_4d_burst(burst,locs,isize):
 
     # -- block ranges per pixel --
     two,nframes,nblocks,h,w = locs.shape
-    if isize is None: isize = edict({"h":h,"w":w})
     assert two == 2,"Input shape starts with two."
+    if isize is None:
+        isize = edict({"h":h,"w":w})
+    if isinstance(isize,int):
+        pad = isize
+        isize = edict({"h":h+pad,"w":w+pad})
 
     # -- burst shape --
     burst = rearrange(burst,'c t h w -> t 1 c h w')

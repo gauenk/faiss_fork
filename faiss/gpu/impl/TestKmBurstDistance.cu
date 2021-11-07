@@ -102,7 +102,7 @@ namespace faiss {
 			 clusters,ave,modes,ps,offset,stream);
       }else if(test_type == KmBurstL2NormCase){
 	test_kmburst_l2norm(test_case,outDistances,burst,blocks,
-			    centroids,clusters,ave,modes,ps,offset,stream);
+			    centroids,clusters,ave,modes,vals,ps,offset,stream);
       }else if(test_type == KmBurstTopKCase){
 	test_kmburst_topK(test_case,outDistances,outIndices,burst,blocks,
 			  centroids,clusters,ave,modes,modes3d,vals,ps,offset,stream);

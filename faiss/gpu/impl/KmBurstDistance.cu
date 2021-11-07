@@ -140,11 +140,11 @@ void runKmBurstDistance(
       }
     }
 
-    // init for comparison right now, to be removed.
-    // thrust::fill(thrust::cuda::par.on(stream),
-    // 		 outDistances.data(),
-    // 		 outDistances.end(),
-    // 		 Limits<float>::getMax());
+    // init for comparison
+    thrust::fill(thrust::cuda::par.on(stream),
+    		 outDistances.data(),
+    		 outDistances.end(),
+    		 Limits<float>::getMax());
     
     // If we're querying against a 0 sized set, just return empty results
     if (height == 0 || width == 0  || nftrs == 0) {
@@ -187,7 +187,15 @@ void runKmBurstDistance(
     DeviceTensor<uint8_t, 4, true> sizes(res,
 	makeTempAlloc(AllocType::Other, stream),
 	{kmeansK,tileBlocks,tileHeight,tileWidth});
-
+    DeviceTensor<float, 4, true> modes4d(res,
+	makeTempAlloc(AllocType::Other, stream),
+	{kmeansK,tileBlocks,height,width});
+    DeviceTensor<float, 3, true> modes3d(res,
+	makeTempAlloc(AllocType::Other, stream),
+	{tileBlocks,height,width});
+    thrust::fill(thrust::cuda::par.on(stream),
+		 modes3d.data(),modes3d.end(),0.);
+    
 
     // We can have any number of vectors to query against, even less than k, in
     // which case we'll return -1 for the index
@@ -199,52 +207,52 @@ void runKmBurstDistance(
     //
     DeviceTensor<float, 3, true> distanceBuf_1(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_2(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_3(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_4(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_5(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_6(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_7(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_8(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_9(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_10(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_11(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_12(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_13(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_14(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_15(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true> distanceBuf_16(res,
     	makeTempAlloc(AllocType::Other, stream),
-    	{tileHeight, tileWidth, tileBlocks});
+    	{tileBlocks, tileWidth, tileHeight});
     DeviceTensor<float, 3, true>* distanceBufs[16] = {&distanceBuf_1,
     						      &distanceBuf_2,
     						      &distanceBuf_3,
@@ -502,12 +510,12 @@ void runKmBurstDistance(
         	auto blockView = blocks.narrow(2, blk, curBlockSize);
         	auto aveView = aveBufs[curStream]
 		  ->narrow(1, 0, curBlockSize)
-		  .narrow(2, 0, curHeightSize+2*psHalf)
-		  .narrow(3, 0, curWidthSize+2*psHalf);
+		  .narrow(2, 0, curHeightSize)
+		  .narrow(3, 0, curWidthSize);
         	auto distanceBufView = distanceBufs[curStream]
-		  ->narrow(0, 0, curHeightSize)
-		  .narrow(1, 0, curWidthSize)
-		  .narrow(2, 0, curBlockSize);
+		  ->narrow(0, 0, curBlockSize)
+		  .narrow(1, 0, curHeightSize)
+		  .narrow(2, 0, curWidthSize);
 		auto kmDistView = kmDistBufs[curStream]
 		  ->narrow(2, 0, curBlockSize)
 		  .narrow(3, 0, curHeightSize)
@@ -533,6 +541,7 @@ void runKmBurstDistance(
         	// Compute Clusters using Patches
         	//
 
+		fprintf(stdout,"starting kmeans clustering\n");
 		float offset = 0;
 		kmeans_clustering(kmDistView,burst,blockView,
 				  centroidView,clusterView,
@@ -544,15 +553,15 @@ void runKmBurstDistance(
 		//
 
 		// compute_mode_centroids(std,patchsize,nftrs,
-		// 		       sizes,modes,streams[curStream]);
-		// kmb_ave4d(modes,modes_ave,streams[curStream]);
+		// 		       sizes,modes4d,streams[curStream]);
+		// kmb_ave4d(modes4d,modes3d,streams[curStream]);
 
 
 		//
 		// Compute Average of Clusters
 		//
 
-        	// kmb_ave(centroidView,aveView,streams[curStream]);
+        	kmb_ave(centroidView,aveView,streams[curStream]);
 
         	// thrust::fill(thrust::cuda::par.on(stream),
         	// 		 aveView.data(),
@@ -576,12 +585,10 @@ void runKmBurstDistance(
         	//  Top K Selection 
         	//
 
-        	// runKmBurstTopK(distanceBufView,
-		// 			     blockLabelView,
-		// 			     outDistanceView,
-		// 			     outIndexView,
-		// 			     mode,
-		// 			     false,k,streams[curStream]);
+        	kmb_topK(distanceBufView,
+			 blockView,outIndexView,
+			 outDistanceView,modes3d,
+			 streams[curStream]);
         				     
         
         
