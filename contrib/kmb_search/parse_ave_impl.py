@@ -44,9 +44,9 @@ def get_ref_centroids(ctype):
         # -- create ref centroid --
         inds = clusters[t//2].type(torch.long)
         inds = repeat(inds,'s h w -> c 1 s h w p1 p2',c=c,p1=ps,p2=ps)
-        # ref_centroid = torch.gather(centroids,dim=1,index=inds)
-        # ref_centroid = ref_centroid[:,0]
-        ref_centroids = centroids[:,1]
+        ref_centroids = torch.gather(centroids,dim=1,index=inds)
+        ref_centroids = ref_centroids[:,0]
+        # ref_centroids = centroids[:,1]
 
         return ref_centroids
     return impl_ref_centroids

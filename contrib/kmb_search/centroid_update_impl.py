@@ -190,6 +190,11 @@ def fill_sframes_ecentroids(burst,indices,sframes,ps):
     clusters = torch.ByteTensor(clusters).to(device)
     sizes = torch.ByteTensor(sizes).to(device)
 
+    # -- aug size to modify centroids --
+    c,t,s,h,w,ps,ps = centroids.shape
+    aug_sizes = repeat(sizes,'t s h w -> c t s h w p1 p2',c=c,p1=ps,p2=ps)
+    centroids[torch.where(aug_sizes==0)]=float("nan")
+
     # -- ref centroid --
     ref_cid = (t//2)%tK
     ref_centroid = centroids[:,ref_cid]
@@ -274,3 +279,4 @@ def fill_ecentroids_numba(centroids,clusters,sizes,burst,indices,sframes):
                                 b = burst[ci,tj,bH,bW]
                                 centroids[ci,ti,si,hi,wi,pi,pj] = b
                     clusters[tj][si][hi][wi] = ti
+                    sizes[ti][si][hi][wi] += 1

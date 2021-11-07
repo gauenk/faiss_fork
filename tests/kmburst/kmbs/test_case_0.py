@@ -42,7 +42,7 @@ def test_case_0():
     nfsearch = 3 # num of frames searched (per iter)
     nbsearch = nsearch_xy**2 # num blocks searched (per frame)
     nblocks = nbsearch**(kmeansK-1)
-    std = 20.
+    std = 100.
     device = 'cuda:0'
     seed = 234
     verbose = False
@@ -90,15 +90,25 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
 
     # -- exec kmeans-burst search --
     testing = {"nfsearch":2,"ave_centroid_type":"clean","ave":"ref_centroid",
-               "cluster":"fill"}
-    output = kmb_search_and_warp(clean,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+               "cluster_centroid_type":"clean","cluster":"fill"}
+    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     vals.kmb_clean,inds.kmb_clean,times.kmb_clean = output
-
 
     # -- exec kmeans-burst search --
     testing = {"ave":"ref_centroid","ave_centroid_type":"clean","nfsearch":3}
     output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     vals.kmb,inds.kmb,times.kmb = output
+
+    # -- exec kmeans-burst search --
+    testing = {"ave":"ave_centroids","ave_centroid_type":"noisy","nfsearch":3}
+    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    vals.kmb_v2,inds.kmb_v2,times.kmb_v2 = output
+
+    # -- exec kmeans-burst search --
+    testing = {"ave":"ref_centroid","ave_centroid_type":"noisy","nfsearch":3}
+    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    vals.kmb_v3,inds.kmb_v3,times.kmb_v3 = output
+
 
     # -- print report --
     print_report(vals,inds,times,noisy,clean,ps)
