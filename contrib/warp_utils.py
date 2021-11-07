@@ -38,6 +38,9 @@ def locs2flow(locs):
     flows = torch.stack([flows_x,flows_y],dim=-1)
     return flows
 
+def flow2pix(flow):
+    return flow2locs(flow)
+
 def flow2locs(flow):
     # flow = rearrange(flow,'t i h w p two -> p i (h w) t two')
     locs_y = flow[...,0]

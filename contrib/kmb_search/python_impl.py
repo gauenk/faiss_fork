@@ -42,7 +42,7 @@ from .parse_score_impl import get_score_function
 
 
 def vprint(*args,**kwargs):
-    VERBOSE = False
+    VERBOSE = True
     if VERBOSE: print(*args,**kwargs)
 
 
@@ -56,7 +56,7 @@ def th_bincount(clusters,sframes):
                 mbin = torch.max(bins)
                 assert mbin == 1,"all must be one!"
 
-def run_kmb_python(res, burst, patchsize, nsearch, k,
+def run_kmb_python(res, noisy, patchsize, nsearch, k,
                    kmeansK, std, ref, search_ranges,
                    nsearch_xy=3, nsiters=2, nfsearch=4,
                    gt_info=None,testing=None):
@@ -66,13 +66,14 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
     """
 
     # -- defaults --
-    t,c,h,w = burst.shape
+    t,c,h,w = noisy.shape
     if nsearch_xy is None: nsearch_xy = 3
     if nfsearch is None: nfsearch = 5
     if nsiters is None: nsiters = divUp(t,nfsearch)
     clean,indices_gt = get_gt_info(gt_info)
-    nfsearch = 3
-    nsiters = 2*(t-nfsearch+1)#1*divUp(t,nfsearch)
+    nfsearch = get_optional_field(testing,"nfsearch",3)
+    nsiters = 1*(t-nfsearch+1)#1*divUp(t,nfsearch)
+    nsiters = get_optional_field(testing,"nsiters",nsiters)
     nframes = t
 
     # -- get running params --
@@ -82,9 +83,9 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
     score_fxn = get_score_function(testing)
 
     # -- shape --
-    device = burst.device
-    burst = rearrange(burst,'t c h w -> c t h w')
-    c,t,h,w = burst.shape
+    device = noisy.device
+    noisy = rearrange(noisy,'t c h w -> c t h w')
+    c,t,h,w = noisy.shape
     kmeansK = t-1
     ps = patchsize
     Z_l2 = ps*ps*c
@@ -104,7 +105,7 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
     search_frames = tiled_search_frames(t,nfsearch,nsiters,ref).to(device)
     search_frames = search_frames.type(torch.long)
     # vprint(search_frames)
-    # vprint("burst.shape: ",burst.shape)
+    # vprint("noisy.shape: ",noisy.shape)
     # vprint("search_ranges.shape: ",search_ranges.shape)
     vprint("-- search frames --")
     vprint(search_frames)
@@ -119,6 +120,7 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
     assert len(kSched) >= nsiters,"k sched and nisters."
     assert np.all(kSched <= t),"all less than num frames."
     prev_sframes = search_frames[0].clone()
+
     for s_iter in tqdm.tqdm(range(nsiters)):#nsiters
 
         vprint("-"*30)
@@ -132,22 +134,31 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
         vprint("sframes: ",sframes)
 
         # -- rename for clarity --
-        noisy = burst
+        noisy = noisy
 
         # -- create mesh --
         indices = mesh_from_ranges(search_ranges,sframes,curr_indices,ref)
         indices = indices.to(device).type(torch.long)
 
-        # -- choose subset of frames from burst --
+        # -- choose subset of frames from noisy --
         iframes,alpha = sframes,2.
-        iframes = pick_fill_frames(sframes,nfsearch,t,alpha,s_iter,device)
+        # iframes = pick_fill_frames(sframes,nfsearch,t,alpha,s_iter,device)
 
         # -- cluster function --
-        output = cluster_fxn(noisy,clean,kmeansK,indices,inidices_gt,sframes,iframes,ps)
+        output = cluster_fxn(noisy,clean,kmeansK,indices,indices_gt,sframes,iframes,ps)
         centroids,clusters,sizes = output
 
         # -- ave function --
         ave = ave_fxn(noisy,clean,centroids,clusters,sizes,indices,ps)
+
+        # # -- [testing] ave --
+        # # kimg = noisy if clean is None else clean
+        # kimg = noisy#clean
+        # nframes = noisy.shape[1]
+        # tclusters,tsizes = init_clusters(nframes,nframes,indices.shape[2],h,w,device)
+        # tcentroids = update_ecentroids(kimg,indices,tclusters,tsizes,ps)
+        # if clusters is None: clusters = tclusters
+        # ave = tcentroids[:,ref]
 
         # -- mode function --
         cmodes = mode_fxn(std,c,ps,sizes)
@@ -163,15 +174,12 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
         scores = score_fxn(l2_vals,cmodes,sizes,nframes)
         mvals = scores
 
-        # -- [testing] ave --
-        # kimg = burst if clean is None else clean
-        # kimg = burst#clean
-        # nframes = burst.shape[1]
-        # tclusters,tsizes = init_clusters(nframes,nframes,indices.shape[2],h,w,device)
-        # tcentroids = update_ecentroids(kimg,indices,tclusters,tsizes,ps)
-        # if clusters is None: clusters = tclusters
-        # ave = tcentroids[:,ref]
-
+        #  -------------------------
+        #
+        #        OLD STUFF
+        #
+        #  -------------------------
+        
         # -- compute difference --
         # vprint(torch.any(torch.isnan(centroids)))
         # vprint(torch.any(torch.isnan(ave)))
@@ -199,7 +207,7 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
         vprint("-- (5,1) [bad] --")
         sindex = get_optimal_search_index(indices,indices_gt,sframes)
         # mvals = torch.nansum(torch.abs(l2_vals-cmodes),dim=0)
-        mvals = torch.nansum(torch.abs(l2_vals-cmodes)*sizes/nframes,dim=0)
+        # mvals = torch.nansum(torch.abs(l2_vals-cmodes)*sizes/nframes,dim=0)
         isorted = torch.argsort(mvals[:,5,1])[:3]
 
         # -- useful print info --
@@ -265,7 +273,7 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
         # vals,modes,inds = update_state(l2_vals,vals,cmodes,modes,
         #                                indices,inds,sframes,s_iter)
         # mvals = torch.nansum(torch.abs(l2_vals - cmodes),dim=0)
-        mvals = torch.nansum(torch.abs(l2_vals-cmodes)*sizes/nframes,dim=0)
+        # mvals = torch.nansum(torch.abs(l2_vals-cmodes)*sizes/nframes,dim=0)
         vprint("[creat top k] mvals.shape: ",mvals.shape)
         isorted = torch.argsort(mvals[:,5,1])[:3]
         vprint("[create top k] argsort(mvals): ", isorted)
@@ -309,7 +317,7 @@ def run_kmb_python(res, burst, patchsize, nsearch, k,
         indices_match_s = indices_match_s.type(torch.float)
         # vprint("indices_match.shape: ",indices_match_s.shape)
         indices_match.append(indices_match_s)
-        # if s_iter == 0: exit()
+        if s_iter == 0: exit()
 
     indices_match = torch.stack(indices_match,dim=0)[:,:,None]
     for t in range(indices_match.shape[1]):

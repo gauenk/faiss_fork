@@ -1,5 +1,6 @@
 
 import torch
+from einops import rearrange,repeat
 
 from .utils import get_optional_field,parse_ctype
 from .cluster_update_impl import init_clusters
@@ -10,26 +11,45 @@ def get_ave_function(testing):
     choice = get_optional_field(testing,"ave","ave_centroids")
     ctype = get_optional_field(testing,"ave_centroid_type","noisy")
     if choice == "ref_centroid":
-        return get_ref_centroid(ctype)
-    elif choice in ["ave_centriods","ave_centroids_v1"]:
+        return get_ref_centroids(ctype)
+    elif choice in ["ave_centroids","ave_centroids_v1"]:
         return get_ave_centroids_v1(ctype)
-    elif choice == "ave_centriods_v2":
+    elif choice == "ave_centroids_v2":
         return get_ave_centroids_v2(ctype)
     else:
-        raise ValueError("Uknown ave function [{choice}]")
+        raise ValueError(f"Uknown ave function [{choice}]")
 
 
-def get_ref_centroid(ctype):
-    def ref_centroid(noisy,clean,centroids,clusters,sizes,indices,ps):
-        device = noisy.device
-        c,nframes,h,w = burst.shape
-        nsearch = indices.shape[2]
-        pimg = parse_ctype(ctype,noisy,clean)
-        clusters,sizes = init_clusters(nframes,nframes,nsearch,h,w,device)
-        centroids = update_ecentroids(pimg,indices,clusters,tsizes,ps)
-        ave = centroids[:,ref]
-        return ave
-    return ref_centroid
+def get_ref_centroids(ctype):
+    def impl_ref_centroids(noisy,clean,centroids,clusters,sizes,indices,ps):
+
+        # -- get centroids --
+        # device = noisy.device
+        # c,nframes,h,w = clean.shape
+        # ref = nframes//2
+        # nsearch = indices.shape[2]
+        # pimg = parse_ctype(ctype,noisy,clean)
+        # clusters,sizes = init_clusters(nframes,nframes,nsearch,h,w,device)
+        # centroids = update_ecentroids(pimg,indices,clusters,sizes,ps)
+
+        # -- aug size to modify centroids --
+        t,s,h,w = clusters.shape
+        c,tK,s,h,w,ps,ps = centroids.shape
+        tK,s,h,w = sizes.shape
+        aug_sizes = repeat(sizes,'t s h w -> c t s h w p1 p2',c=c,p1=ps,p2=ps)
+
+        # -- set zero locations to nan --
+        centroids[torch.where(aug_sizes==0)]=float("nan")
+
+        # -- create ref centroid --
+        inds = clusters[t//2].type(torch.long)
+        inds = repeat(inds,'s h w -> c 1 s h w p1 p2',c=c,p1=ps,p2=ps)
+        # ref_centroid = torch.gather(centroids,dim=1,index=inds)
+        # ref_centroid = ref_centroid[:,0]
+        ref_centroids = centroids[:,1]
+
+        return ref_centroids
+    return impl_ref_centroids
      
 def get_ave_centroids_v1(ctype):
     def ave_centroids_v1(noisy,clean,centroids,clusters,sizes,indices,ps):

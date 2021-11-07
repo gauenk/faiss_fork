@@ -174,9 +174,8 @@ def fill_sframes_ecentroids(burst,indices,sframes,ps):
 
     # -- create outputs --
     centroids = np.zeros((c,tK,s,h,w,ps,ps)).astype(np.float)
-    clusters = np.zeros((t,s,h,w)).astype(np.int)
-    sizes = np.zeros((tK,s,h,w)).astype(np.int)
-    clusters[...] = float("nan")
+    clusters = 255*np.ones((t,s,h,w)).astype(np.uint8)
+    sizes = np.zeros((tK,s,h,w)).astype(np.uint8)
 
     # -- numba --
     burst = burst.cpu().numpy()
@@ -188,6 +187,8 @@ def fill_sframes_ecentroids(burst,indices,sframes,ps):
     centroids = torch.FloatTensor(centroids)
     centroids = centroids.type(dtype).to(device)
     ave = torch.mean(centroids,dim=1)
+    clusters = torch.ByteTensor(clusters).to(device)
+    sizes = torch.ByteTensor(sizes).to(device)
 
     # -- ref centroid --
     ref_cid = (t//2)%tK
@@ -216,9 +217,8 @@ def fill_ecentroids(burst,indices,ps,kmeansK):
 
     # -- create outputs --
     centroids = np.zeros((c,tK,s,h,w,ps,ps)).astype(np.float)
-    clusters = np.zeros((t,s,h,w)).astype(np.int)
-    sizes = np.zeros((tK,s,h,w)).astype(np.int)
-    clusters[...] = float("nan")
+    clusters = 255*np.ones((t,s,h,w)).astype(np.uint8)
+    sizes = np.zeros((tK,s,h,w)).astype(np.uint8)
 
     # -- numba --
     burst = burst.cpu().numpy()
@@ -231,6 +231,8 @@ def fill_ecentroids(burst,indices,ps,kmeansK):
     centroids = torch.FloatTensor(centroids)
     centroids = centroids.type(dtype).to(device)
     ave = torch.mean(centroids,dim=1)
+    clusters = torch.ByteTensor(clusters).to(device)
+    sizes = torch.ByteTensor(sizes).to(device)
 
     # -- ref centroid --
     ref_cid = (t//2)%tK

@@ -10,11 +10,11 @@ def get_mode_function(testing):
     elif choice == "centroids":
         return get_centroid_modes()
     else:
-        raise ValueError("Uknown mode function [{choice}]")
+        raise ValueError(f"Uknown mode function [{choice}]")
 
 def get_zero_modes():
     def zero_modes(std,c,ps,sizes):
-        modes = compute_mode(std,c,ps,sizes,type='centroids')
+        modes,_ = compute_mode(std,c,ps,sizes,type='centroids')
         modes = torch.zeros_like(modes)
         return modes
     return zero_modes

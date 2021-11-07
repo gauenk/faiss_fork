@@ -1,6 +1,7 @@
 
 import torch
 from .utils import get_optional_field,parse_ctype
+from .centroid_update_impl import fill_sframes_ecentroids
 
 def get_cluster_function(testing):
     choice = get_optional_field(testing,"cluster","fill")
@@ -8,20 +9,23 @@ def get_cluster_function(testing):
     offset = get_optional_field(testing,"km_offset",0.)
     km_iters = get_optional_field(testing,"km_iters",10)
     if choice == "fill":
-        return get_fill(ctype)
+        return get_fill_cycle(ctype)
     elif choice == "sup_kmeans":
         return get_sup_kmeans(ctype)
     elif choice == "kmeans":
         return get_kmeans(ctype,offset,km_iters)
     else:
-        raise ValueError("Uknown [cluster] function [{choice}]")
+        raise ValueError(f"Uknown [cluster] function [{choice}]")
 
 def get_fill_cycle(ctype):
 
     def fill_cycle(noisy,clean,kmeansK,indices,indices_gt,sframes,iframes,ps):
         cimg = parse_ctype(ctype,noisy,clean)
-        output = fill_sframes_ecentroids(kimg,indices,iframes,ps)
+        output = fill_sframes_ecentroids(cimg,indices,iframes,ps)
         centroids,clusters,sizes,_,_ = output
+        print("centroids.shape: ",centroids.shape)
+        print("clusters.shape: ",clusters.shape)
+        print("sizes.shape: ",sizes.shape)
         return centroids,clusters,sizes
 
     return fill_cycle
