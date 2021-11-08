@@ -41,8 +41,8 @@ from .parse_mode_impl import get_mode_function
 from .parse_score_impl import get_score_function
 
 
+VERBOSE = False
 def vprint(*args,**kwargs):
-    VERBOSE = True
     if VERBOSE: print(*args,**kwargs)
 
 
@@ -66,6 +66,7 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
     """
 
     # -- defaults --
+    global VERBOSE
     t,c,h,w = noisy.shape
     if nsearch_xy is None: nsearch_xy = 3
     if nfsearch is None: nfsearch = 5
@@ -74,6 +75,7 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
     nfsearch = get_optional_field(testing,"nfsearch",3)
     nsiters = 1*(t-nfsearch+1)#1*divUp(t,nfsearch)
     nsiters = get_optional_field(testing,"nsiters",nsiters)
+    VERBOSE = get_optional_field(testing,"verbose",VERBOSE)
     nframes = t
 
     # -- get running params --

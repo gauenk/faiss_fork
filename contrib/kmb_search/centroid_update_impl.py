@@ -171,6 +171,8 @@ def fill_sframes_ecentroids(burst,indices,sframes,ps):
     c,t,h,w = burst.shape
     two,t,s,h,w = indices.shape
     tK = len(sframes)
+    # tKm1 = len(sframes)
+    # tK = tKm1 + 1
 
     # -- create outputs --
     centroids = np.zeros((c,tK,s,h,w,ps,ps)).astype(np.float)
@@ -255,7 +257,7 @@ def fill_ecentroids_numba(centroids,clusters,sizes,burst,indices,sframes):
     assert tK == len(sframes),"search frames and num centroids must match."
     ps = centroids.shape[-1]
     psHalf = ps//2
-
+    
     def bounds(p,lim):
         if p < 0: p = -p
         if p > lim: p = 2*lim - p
@@ -280,3 +282,8 @@ def fill_ecentroids_numba(centroids,clusters,sizes,burst,indices,sframes):
                                 centroids[ci,ti,si,hi,wi,pi,pj] = b
                     clusters[tj][si][hi][wi] = ti
                     sizes[ti][si][hi][wi] += 1
+                # -- check for no assignments --
+                # for ti in range(tK):
+                #     if clusters[ti][si][hi][wi] == 255:
+                #         clusters[ti][si][hi][wi] = tK
+                #         sizes[tK][si][hi][wi] = 

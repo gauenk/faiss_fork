@@ -2,6 +2,7 @@
 import torch
 from .utils import get_optional_field,parse_ctype
 from .centroid_update_impl import fill_sframes_ecentroids
+from .kmeans_impl import sup_kmeans,run_ekmeans
 
 def get_cluster_function(testing):
     choice = get_optional_field(testing,"cluster","fill")
@@ -23,9 +24,6 @@ def get_fill_cycle(ctype):
         cimg = parse_ctype(ctype,noisy,clean)
         output = fill_sframes_ecentroids(cimg,indices,iframes,ps)
         centroids,clusters,sizes,_,_ = output
-        print("centroids.shape: ",centroids.shape)
-        print("clusters.shape: ",clusters.shape)
-        print("sizes.shape: ",sizes.shape)
         return centroids,clusters,sizes
 
     return fill_cycle

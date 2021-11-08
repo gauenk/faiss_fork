@@ -32,7 +32,7 @@ def kmbsearch_setup(k,t,h,w,c,ps,std,device,seed=123):
     # -- apply dynamic xform --
     dynamic_info = edict()
     dynamic_info.mode = 'global'
-    dynamic_info.nframes = 4
+    dynamic_info.nframes = t
     dynamic_info.ppf = 1
     dynamic_info.frame_size = [h,w]
     dyn_xform = get_dynamic_transform(dynamic_info,None)
@@ -50,7 +50,7 @@ def kmbsearch_setup(k,t,h,w,c,ps,std,device,seed=123):
     # ----------------------------
 
     # -- sample data --
-    image = np.random.rand(h,w,c).astype(np.float32)
+    image = np.random.rand(3*h,3*w,c).astype(np.float32)
     # image[1::2,::2],image[::2,1::2] = 1.,1.
     image = np.uint8(image*255.)
     imgPIL = Image.fromarray(image)

@@ -24,13 +24,16 @@ VERBOSE=False
 def vprint(*args,**kwargs):
     if VERBOSE: print(*args,**kwargs)
 
+def divUp(a,b): return (a-1)//b+1
+
+
 @pytest.mark.kmbs
 @pytest.mark.kmbs_case0
 def test_case_0():
 
     # -- params --
     k = 1
-    t = 4
+    t = 5
     h = 16
     w = 16
     c = 3
@@ -75,42 +78,80 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
     inds = edict()
     times = edict()
     
+    # ----------------------------
+    #
+    #       Perfect Methods
+    #
+    # ----------------------------
+
     # -- add ground-truth --
     vals.gt = torch.zeros(t,h,w).to(device)
     inds.gt = inds_gt
     times.gt = 0
 
     # -- exec l2 paired search --
-    output = nnf_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times)
-    vals.l2,inds.l2,times.l2 = output
-
-    # -- exec l2 paired search --
     output = nnf_search_and_warp(clean,clean,ps,nsearch_xy,std,vals,inds,times)
     vals.l2_clean,inds.l2_clean,times.l2_clean = output
 
     # -- exec kmeans-burst search --
-    testing = {"nfsearch":2,"ave_centroid_type":"clean","ave":"ref_centroid",
+    testing = {"nfsearch":2,"ave_centroid_type":"clean","ave":"ref_centroids",
                "cluster_centroid_type":"clean","cluster":"fill"}
     output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     vals.kmb_clean,inds.kmb_clean,times.kmb_clean = output
 
-    # -- exec kmeans-burst search --
-    testing = {"ave":"ref_centroid","ave_centroid_type":"clean","nfsearch":3}
-    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb,inds.kmb,times.kmb = output
+    # ----------------------------
+    #
+    #    Actual Search Methods
+    #
+    # ----------------------------
+
+    # -- exec l2 paired search --
+    output = nnf_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times)
+    vals.l2,inds.l2,times.l2 = output
 
     # -- exec kmeans-burst search --
-    testing = {"ave":"ave_centroids","ave_centroid_type":"noisy","nfsearch":3}
-    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb_v2,inds.kmb_v2,times.kmb_v2 = output
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4}
+    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb,inds.kmb,times.kmb = output
 
     # -- exec kmeans-burst search --
-    testing = {"ave":"ref_centroid","ave_centroid_type":"noisy","nfsearch":3}
+    # testing = {"ave":"ave_centroids","ave_centroid_type":"clean","nfsearch":4}
+    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v2,inds.kmb_v2,times.kmb_v2 = output
+
+    # -- exec kmeans-burst search --
+    testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":4,
+               "cluster":"fill","cluster_centroid_type":"noisy"}               
     output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     vals.kmb_v3,inds.kmb_v3,times.kmb_v3 = output
 
+    # # -- exec kmeans-burst search --
+    # testing = {"ave":"ave_centroids","ave_centroid_type":"clean","nfsearch":4,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"clean"}
+    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v4,inds.kmb_v4,times.kmb_v4 = output
+
+    # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy"}
+    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v5,inds.kmb_v5,times.kmb_v5 = output
+
+    # -- exec kmeans-burst search --
+    testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":4,
+               "cluster":"sup_kmeans","cluster_centroid_type":"noisy"}
+    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    vals.kmb_v6,inds.kmb_v6,times.kmb_v6 = output
+
+    # # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":4}
+    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v7,inds.kmb_v7,times.kmb_v7 = output
 
     # -- print report --
+    msg = "Goal: We want kmb_v6 to beat kmb_v3 by ALOT. "
+    msg += "This demonstrates clustering works."
+    print(msg)
     print_report(vals,inds,times,noisy,clean,ps)
 
 def nnf_search_and_warp(noisy,clean,patchsize,nsearch_xy,std,
@@ -215,7 +256,7 @@ def print_report(vals,inds,times,noisy,clean,patchsize):
             m_inds = inds[method]
             warp = warp_burst_from_pix(clean,m_inds[:,:,None])
             warp = rearrange(warp,'1 c t h w -> t c h w')
-            psnrs = images_to_psnrs_crop(warp,repimg,ps)
+            psnrs = images_to_psnrs_crop(warp,repimg,2*divUp(ps,2))
             print(f"-- [{method}] --")
             print(psnrs)
             save_image(f"tkmb_{method}.png",warp)
