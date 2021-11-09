@@ -10,13 +10,13 @@ from .centroid_update_impl import update_centroids,update_ecentroids,fill_ecentr
 from .cluster_update_impl import update_clusters,init_clusters,rand_clusters,sup_clusters
 from .pwd_impl import compute_pairwise_distance,compute_epairwise_distance
 
-def sup_kmeans(burst,clean,indices,indices_gt,sframes,ps):
+def sup_kmeans(burst,clean,indices,indices_gt,sframes,ps,version="v1"):
     # --> return centroids with known clustering <--
     # print("sup clusters.")
     # print("clean.shape: ",clean.shape)
     # print("burst.shape: ",clean.shape)
     # print("indices.shape: ",indices.shape)
-    clusters,sizes = sup_clusters(clean,indices,indices_gt,sframes,ps)
+    clusters,sizes = sup_clusters(clean,indices,indices_gt,sframes,ps,version)
     # print("clusters.shape: ",clusters.shape)
     # print(clusters[:,0,8,7])
     # print(clusters[:,1,8,7])

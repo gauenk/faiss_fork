@@ -33,7 +33,7 @@ def test_case_0():
 
     # -- params --
     k = 1
-    t = 5
+    t = 10
     h = 16
     w = 16
     c = 3
@@ -77,6 +77,7 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
     vals = edict()
     inds = edict()
     times = edict()
+    desc = edict()
     
     # ----------------------------
     #
@@ -90,14 +91,14 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
     times.gt = 0
 
     # -- exec l2 paired search --
-    output = nnf_search_and_warp(clean,clean,ps,nsearch_xy,std,vals,inds,times)
+    output = run_nnf_search(clean,clean,ps,nsearch_xy,std,vals,inds,times)
     vals.l2_clean,inds.l2_clean,times.l2_clean = output
 
     # -- exec kmeans-burst search --
-    testing = {"nfsearch":2,"ave_centroid_type":"clean","ave":"ref_centroids",
-               "cluster_centroid_type":"clean","cluster":"fill"}
-    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb_clean,inds.kmb_clean,times.kmb_clean = output
+    # testing = {"nfsearch":2,"ave_centroid_type":"clean","ave":"ref_centroids",
+    #            "cluster_centroid_type":"clean","cluster":"fill"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_clean,inds.kmb_clean,times.kmb_clean = output
 
     # ----------------------------
     #
@@ -106,55 +107,129 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
     # ----------------------------
 
     # -- exec l2 paired search --
-    output = nnf_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times)
+    output = run_nnf_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times)
     vals.l2,inds.l2,times.l2 = output
+    desc.l2 = "standard searching"
 
-    # -- exec kmeans-burst search --
-    # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4}
-    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4,
+    #            "cluster":"fill","cluster_centroid_type":"noisy"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     # vals.kmb,inds.kmb,times.kmb = output
+    # desc.kmb = "searching a burst using the mean w.r.t reference frame"
+    # desc.kmb += "maybe same as l2?"
 
     # -- exec kmeans-burst search --
     # testing = {"ave":"ave_centroids","ave_centroid_type":"clean","nfsearch":4}
-    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     # vals.kmb_v2,inds.kmb_v2,times.kmb_v2 = output
 
-    # -- exec kmeans-burst search --
-    testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":4,
-               "cluster":"fill","cluster_centroid_type":"noisy"}               
-    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb_v3,inds.kmb_v3,times.kmb_v3 = output
+    # # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":4,
+    #            "cluster":"fill","cluster_centroid_type":"noisy"}               
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v3,inds.kmb_v3,times.kmb_v3 = output
+    # desc.kmb_v3 = "fill the cluster using noisy frames"
 
     # # -- exec kmeans-burst search --
     # testing = {"ave":"ave_centroids","ave_centroid_type":"clean","nfsearch":4,
     #            "cluster":"sup_kmeans","cluster_centroid_type":"clean"}
-    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     # vals.kmb_v4,inds.kmb_v4,times.kmb_v4 = output
 
     # -- exec kmeans-burst search --
     # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4,
     #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy"}
-    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     # vals.kmb_v5,inds.kmb_v5,times.kmb_v5 = output
 
+    # # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":4,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v1"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v6,inds.kmb_v6,times.kmb_v6 = output
+    # desc.kmb_v6 = "Supervised clustering with a clean reference.\n"
+    # desc.kmb_v6 += "The sup. clustering will not allow clusters of searched frames"
+
     # -- exec kmeans-burst search --
-    testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":4,
-               "cluster":"sup_kmeans","cluster_centroid_type":"noisy"}
-    output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb_v6,inds.kmb_v6,times.kmb_v6 = output
+
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":3,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v7,inds.kmb_v7,times.kmb_v7 = output
+    # desc.kmb_v7 = "Supervised clustering with a clean reference.\n"
+    # desc.kmb_v7 += "This should be the best of all the clustering methods."
 
     # # -- exec kmeans-burst search --
-    # testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":4}
-    # output = kmb_search_and_warp(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    # vals.kmb_v7,inds.kmb_v7,times.kmb_v7 = output
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v8,inds.kmb_v8,times.kmb_v8 = output
+    # desc.kmb_v8 = "Supervised clustering with a single noisy reference.\n"
+    # desc.kmb_v8 += "This is the standard search + known clusters."
+
+    # -- exec kmeans-burst search --
+
+    testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":3,
+               "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+               "sup_km_version":"v2"}
+    output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    vals.kmb_v9,inds.kmb_v9,times.kmb_v9 = output
+    desc.kmb_v9 = "Supervised clustering with a clustered noisy reference.\n"
+    desc.kmb_v9 += "This is the known clusters + averaged noisy reference"
+
+    testing = {"ave":"ref_centroids","ave_centroid_type":"clean",
+               "nfsearch":3,"cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+               "sup_km_version":"v2"}
+    output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    vals.kmb_v13,inds.kmb_v13,times.kmb_v13 = output
+    desc.kmb_v13 = "Supervised clustering with a clean+noise reference.\n"
+    desc.kmb_v13 += "This should be the best of all the clustering methods."
+
+    testing = {"ave":"ref_centroids","ave_centroid_type":"clean-v1",
+               "nfsearch":3,"cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+               "sup_km_version":"v2"}
+    output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    vals.kmb_v14,inds.kmb_v14,times.kmb_v14 = output
+    desc.kmb_v14 = "Supervised clustering with a clean+noise reference.\n"
+    desc.kmb_v14 += "This should be the best of all the clustering methods."
+
+
+    # # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2","sranges_type":"l2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v10,inds.kmb_v10,times.kmb_v10 = output
+    # desc.kmb_v10 = "Same as v8 but use the output from the l2 as the search grid."
+
+    # # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":4,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2","sranges_type":"l2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v11,inds.kmb_v11,times.kmb_v11 = output
+    # desc.kmb_v11 = "Same as v9 but use the output from the l2 as the search grid."
+
+    # -- exec kmeans-burst search --
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":4,
+    #            "cluster":"kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2","sranges_type":"zero"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v12,inds.kmb_v12,times.kmb_v12 = output
+    # desc.kmb_v12 = "Same as v9 but using actual kmeans"
 
     # -- print report --
-    msg = "Goal: We want kmb_v6 to beat kmb_v3 by ALOT. "
-    msg += "This demonstrates clustering works."
+    msg = "TODO"
+    msg += "\nWe want to a non-sup clustering to be closer to sup.. e.g. beat l2. [7v9]"
+    msg += "\nThe ave_centroid_type = clean should WIN given but it loses rn."
     print(msg)
     print_report(vals,inds,times,noisy,clean,ps)
 
-def nnf_search_and_warp(noisy,clean,patchsize,nsearch_xy,std,
+def run_nnf_search(noisy,clean,patchsize,nsearch_xy,std,
                         agg_vals,agg_inds,agg_times):
 
     # -- extract into --
@@ -182,8 +257,8 @@ def nnf_search_and_warp(noisy,clean,patchsize,nsearch_xy,std,
     return vals,inds,runtime
 
 
-def kmb_search_and_warp(noisy,clean,patchsize,nsearch_xy,std,
-                        agg_vals,agg_inds,agg_times,testing):
+def run_kmb_search(noisy,clean,patchsize,nsearch_xy,std,
+                   agg_vals,agg_inds,agg_times,testing):
     # -- extract into --
     device = noisy.device
     c,t,h,w = noisy.shape

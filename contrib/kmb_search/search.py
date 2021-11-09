@@ -16,7 +16,7 @@ from nnf_utils import runNnfBurst as runPairBurst
 from .impl import runKmBurstSearch
 from .topk_impl import kmb_topk
 from .compute_mode_impl import compute_mode_pairs
-from .utils import jitter_traj_ranges,init_zero_locs
+from .utils import jitter_traj_ranges,init_zero_locs,get_optional_field
 
 def create_trajectories(locs):
     """
@@ -62,6 +62,45 @@ def choose_best(agg_vals,agg_locs,agg_modes,K):
     locs = torch.stack(locs,dim=0)
     return vals,locs
 
+def choose_search_ranges(burst,ref,nsearch_xy,l2_patchsize,l2_nblocks,
+                         l2_k,std,c,patchsize,sranges_type):
+    # -- unpack --
+    device = burst.device
+    nframes,nimages,c,h,w = burst.shape
+
+    # -- choose --
+    if sranges_type == "l2":
+        # -- run l2 --
+        l2_mode = compute_mode_pairs(std,c,patchsize)
+        vals,locs = runPairBurst(burst,l2_patchsize,
+                                 l2_nblocks,k=l2_k,valMean=l2_mode,
+                                 img_shape = None)
+        locs = torch.flip(locs,dims=(-1,))
+        locs = locs.to(device)
+        offset = False
+    
+        # -- create search ranges using the l2 output directly --
+        search_ranges = locs.clone()
+        search_ranges = rearrange(search_ranges,'t i h w k two -> 1 i two t k h w')
+        # print(search_ranges.shape)
+        # exit()
+        # print(search_ranges[0,0,:,:,:,6,6].transpose(0,-1))
+    
+    elif sranges_type == "zero":
+
+        # -- use zero init --
+        locs = init_zero_locs(nframes,nimages,h,w).to(device)
+        offset = True
+    
+        # -- create a set of smoothed trajectories --
+        trajs = create_trajectories(locs)
+        search_ranges = jitter_traj_ranges(trajs,nsearch_xy,ref,offset=offset)
+        # print("-"*10)
+        # print(search_ranges[0,0,:,:,:,9,7].transpose(0,-1))
+        # print("-"*10)
+        # print(search_ranges.shape)
+    return search_ranges
+
 def runKmSearch(burst,patchsize,nsearch_xy,k=1,std=None,
                 l2_patchsize=None,l2_nblocks=None,l2_k=None,
                 search_space=None,ref=None,mode="cuda",
@@ -74,34 +113,11 @@ def runKmSearch(burst,patchsize,nsearch_xy,k=1,std=None,
     if l2_patchsize is None: l2_patchsize = patchsize
     if l2_nblocks is None: l2_nblocks = nsearch_xy
     if l2_k is None: l2_k = 5
+    sranges_type = get_optional_field(testing,"sranges_type","zero")
 
-    # -- run l2 --
-    l2_mode = compute_mode_pairs(std,c,patchsize)
-    vals,locs = runPairBurst(burst,l2_patchsize,
-                             l2_nblocks,k=l2_k,valMean=l2_mode,
-                             img_shape = None)
-    locs = torch.flip(locs,dims=(-1,))
-    locs = locs.to(device)
-    offset = False
-
-    # -- use zero init --
-    locs = init_zero_locs(nframes,nimages,h,w).to(device)
-    offset = True
-
-    # -- create a set of smoothed trajectories --
-    trajs = create_trajectories(locs)
-    search_ranges = jitter_traj_ranges(trajs,nsearch_xy,ref,offset=offset)
-    # print("-"*10)
-    # print(search_ranges[0,0,:,:,:,9,7].transpose(0,-1))
-    # print("-"*10)
-    # print(search_ranges.shape)
-
-    # -- create search ranges using the l2 output directly --
-    # search_ranges = locs.clone()
-    # search_ranges = rearrange(search_ranges,'t i h w k two -> 1 i two t k h w')
-    # print(search_ranges.shape)
-    # exit()
-    # print(search_ranges[0,0,:,:,:,6,6].transpose(0,-1))
+    # -- get search ranges --
+    search_ranges = choose_search_ranges(burst,ref,nsearch_xy,l2_patchsize,l2_nblocks,
+                                         l2_k,std,c,patchsize,sranges_type)
 
     # -- create search space from trajectories --
     nframes_search = 3 # constant from C++

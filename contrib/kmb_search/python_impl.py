@@ -31,6 +31,7 @@ from .cluster_update_impl import init_clusters,sup_clusters
 from .utils import jitter_search_ranges,tiled_search_frames,mesh_from_ranges,divUp
 from .utils import initialize_indices,pick_fill_frames,get_gt_info
 from .utils import get_optional_field
+from .parse_utils import get_centroids_for_ave
 
 from .debug import get_optimal_search_index
 
@@ -125,6 +126,8 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
 
     for s_iter in tqdm.tqdm(range(nsiters)):#nsiters
 
+        # if s_iter == 0: VERBOSE = True
+        # else: VERBOSE = False
         vprint("-"*30)
         vprint("-"*30)
         vprint(f"Iteration: {s_iter}")
@@ -134,9 +137,6 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         kmeansK = kSched[s_iter]
         sframes = search_frames[s_iter]
         vprint("sframes: ",sframes)
-
-        # -- rename for clarity --
-        noisy = noisy
 
         # -- create mesh --
         indices = mesh_from_ranges(search_ranges,sframes,curr_indices,ref)
@@ -173,7 +173,7 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         vprint("sizes.shape: ",sizes.shape)
 
         # -- compute score for ranking --
-        scores = score_fxn(l2_vals,cmodes,sizes,nframes)
+        scores = score_fxn(l2_vals,cmodes,clusters,sizes,nframes,ref)
         mvals = scores
 
         #  -------------------------
@@ -206,67 +206,107 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         # vprint(indices_gt[:,:,9,7].transpose(0,1))
         # vprint(curr_indices[:,:,9,7].transpose(0,1))
 
-        vprint("-- (5,1) [bad] --")
+        vprint("-- (5,8) [bad] --")
         sindex = get_optimal_search_index(indices,indices_gt,sframes)
         # mvals = torch.nansum(torch.abs(l2_vals-cmodes),dim=0)
         # mvals = torch.nansum(torch.abs(l2_vals-cmodes)*sizes/nframes,dim=0)
-        isorted = torch.argsort(mvals[:,5,1])[:3]
+        isorted = torch.argsort(mvals[:,5,8])[:3]
 
         # -- useful print info --
         vprint("mvals.shape: ",mvals.shape)
         vprint("clusters.shape: ",clusters.shape)
         vprint("Winner Should Be Index: ",sindex)
         vprint("Top 3 Winners Actually Are: ",isorted)
-        vprint("-- cluster info [@idx_match,isort[0],isort...] --")
-        vprint(clusters[:,sindex[0],5,1])
-        vprint(clusters[:,isorted[0],5,1])
-        vprint(clusters[:,isorted[1],5,1])
-        vprint(clusters[:,isorted[2],5,1])
+
+        # -- centroids --
+        # clean_centroids,_,_ = get_centroids_for_ave("clean",noisy,clean,indices,ps)
+        # noisy_centroids,_,_ = get_centroids_for_ave("noisy",noisy,clean,indices,ps)
+        # vprint(" -- [clean] centroids[0,:,324,5,8] --")
+        # vprint(clean_centroids[0,:,324,5,8])
+        # vprint(" -- [noisy] centroids[0,:,324,5,8] --")
+        # vprint(noisy_centroids[0,:,324,5,8])
+        # vprint(" -- centroids[0,:,324,5,8] --")
+        # vprint(centroids[0,:,324,5,8])
+
+        # vprint(" -- [clean] centroids[0,:,326,5,8] --")
+        # vprint(clean_centroids[0,:,326,5,8])
+        # vprint(" -- [noisy] centroids[0,:,326,5,8] --")
+        # vprint(noisy_centroids[0,:,326,5,8])
+        # vprint(" -- centroids[0,:,326,5,8] --")
+        # vprint(centroids[0,:,326,5,8])
+        
+
+
 
         # -- delete me --
-        # vprint(clusters[:,45,5,1])
-        # vprint(clusters[:,51,5,1])
-        # vprint(clusters[:,79,5,1])
+        # vprint(clusters[:,45,5,8])
+        # vprint(clusters[:,51,5,8])
+        # vprint(clusters[:,79,5,8])
         # -- keep me --
         vprint(sframes)
-        vprint(l2_vals[:,:4,5,1])
-        # vprint(indices[:,-4:,:,5,1].transpose(0,2))
+        vprint(l2_vals[:,:4,5,8])
+        # vprint(indices[:,-4:,:,5,8].transpose(0,2))
         vprint(" -- indices gt --")
-        vprint(indices_gt[:,:,5,1])
+        vprint(indices_gt[:,:,5,8])
         vprint(" -- current indices --")
-        vprint(curr_indices[:,:,5,1])
+        vprint(curr_indices[:,:,5,8])
 
         vprint(" ------------- ")
         vprint(" -- sindex -- ")
         vprint(" ------------- ")
         vprint(sindex)
-        vprint(" -- vals[:,@match,5,1] --")
-        vprint(l2_vals[:,sindex[0],5,1])
-        vprint(" -- modes[:,@match,5,1] --")
-        vprint(cmodes[:,sindex[0],5,1])
-        vprint(" -- sizes[:,@match,5,1] --")
-        vprint(sizes[:,sindex[0],5,1])
-        vprint(" -- mvals[@match,5,1] --")
-        vprint(mvals[sindex[0],5,1])
-        vprint(" -- indices[:,:,@match,5,1] --")
-        vprint(indices[:,:,sindex,5,1].transpose(1,2).transpose(0,1))
+        vprint(" -- vals[:,@match,5,8] --")
+        vprint(l2_vals[:,sindex[0],5,8])
+        vprint(" -- modes[:,@match,5,8] --")
+        vprint(cmodes[:,sindex[0],5,8])
+        vprint(" -- sizes[:,@match,5,8] --")
+        vprint(sizes[:,sindex[0],5,8])
+        vprint(" -- mvals[@match,5,8] --")
+        vprint(mvals[sindex[0],5,8])
+        vprint(" -- indices[:,:,@match,5,8] --")
+        vprint(indices[:,:,sindex,5,8].transpose(1,2).transpose(0,1))
+        vprint("-- clusters[:,@match,5,8] --")
+        vprint(clusters[:,sindex[0],5,8])
 
         vprint(" ------------- ")
         vprint(" -- isorted -- ")
         vprint(" ------------- ")
         vprint(isorted)
-        vprint(" -- vals[:,@isorted[0],5,1] --")
-        vprint(l2_vals[:,isorted[0],5,1])
-        vprint(" -- modes[:,@isorted[0],5,1] --")
-        vprint(cmodes[:,isorted[0],5,1])
-        vprint(" -- sizes[:,@isorted[0],5,1] --")
-        vprint(sizes[:,isorted[0],5,1])
-        vprint(" -- mvals[isorted,5,1] --")
-        vprint(mvals[isorted,5,1])
-        vprint(" -- indices[:,:,isorted,5,1] --")
-        vprint(indices[:,:,isorted,5,1].transpose(1,2).transpose(0,1))
-        
+        vprint(" -- vals[:,@isorted[0],5,8] --")
+        vprint(l2_vals[:,isorted[0],5,8])
+        vprint(l2_vals[:,isorted[1],5,8])
+        vprint(" -- modes[:,@isorted[0],5,8] --")
+        vprint(cmodes[:,isorted[0],5,8])
+        vprint(cmodes[:,isorted[1],5,8])
+        vprint(" -- sizes[:,@isorted[0],5,8] --")
+        vprint(sizes[:,isorted[0],5,8])
+        vprint(sizes[:,isorted[1],5,8])
+        vprint(" -- mvals[isorted,5,8] --")
+        vprint(mvals[isorted,5,8])
+        vprint(" -- indices[:,:,isorted,5,8] --")
+        vprint(indices[:,:,isorted,5,8].transpose(1,2).transpose(0,1))
+        vprint(" -- clusters[:,isorted,5,8] --")
+        vprint(clusters[:,isorted[0],5,8])
+        vprint(clusters[:,isorted[1],5,8])
+        vprint(clusters[:,isorted[2],5,8])
 
+        # vprint(" ------------- ")
+        # vprint(" -- @324 -- ")
+        # vprint(" ------------- ")
+        # vprint(" -- vals[:,@324,5,8] --")
+        # vprint(l2_vals[:,324,5,8])
+        # vprint(" -- modes[:,@324,5,8] --")
+        # vprint(cmodes[:,324,5,8])
+        # vprint(" -- sizes[:,@324,5,8] --")
+        # vprint(sizes[:,324,5,8])
+        # vprint(" -- mvals[@324,5,8] --")
+        # vprint(mvals[324,5,8])
+        # vprint(" -- indices[:,:,@324,5,8] --")
+        # vprint(indices[:,:,324,5,8])
+        # vprint(" -- clusters[:,@324,5,8] --")
+        # vprint(clusters[:,324,5,8])
+
+        
         # -- create top k --
         vprint("[create top k] indices.shape: ",indices.shape)
         # vprint(inds.shape)
@@ -277,7 +317,7 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         # mvals = torch.nansum(torch.abs(l2_vals - cmodes),dim=0)
         # mvals = torch.nansum(torch.abs(l2_vals-cmodes)*sizes/nframes,dim=0)
         vprint("[creat top k] mvals.shape: ",mvals.shape)
-        isorted = torch.argsort(mvals[:,5,1])[:3]
+        isorted = torch.argsort(mvals[:,5,8])[:3]
         vprint("[create top k] argsort(mvals): ", isorted)
         cmodes_ave = torch.mean(cmodes,dim=1)[:,None]
         vals,modes,inds = topk_torch(mvals,vals,cmodes_ave,indices,1)
@@ -297,9 +337,9 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         # vprint("Delta: ",delta)
         curr_indices = inds[:,:,0]
         vprint("-- [bottom] curr indices.")
-        vprint(curr_indices[:,:,5,1])
+        vprint(curr_indices[:,:,5,8])
         vprint("-- [bottom] gt indices.")
-        vprint(indices_gt[:,:,5,1])
+        vprint(indices_gt[:,:,5,8])
         # if s_iter == 1: exit()
 
         # -- print the shit ones --
@@ -311,7 +351,8 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         # vprint("curr_indices.shape: ",curr_indices.shape)
         # vprint("indices_gt.shape: ",indices_gt.shape)
         # vprint("shit_indices.shape: ",shit_indices.shape)
-        # vprint(shit_indices[torch.where(shit_indices[:,0] == 0)])
+        shit_indices = shit_indices[torch.where(shit_indices[:,0] == 0)]
+        vprint(shit_indices.transpose(0,1))
 
         # vprint("curr_indices.shape: ",curr_indices.shape)
         indices_match_s = (curr_indices == indices_gt)
@@ -320,6 +361,7 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
         # vprint("indices_match.shape: ",indices_match_s.shape)
         indices_match.append(indices_match_s)
         # if s_iter == 0: exit()
+
 
     indices_match = torch.stack(indices_match,dim=0)[:,:,None]
     for t in range(indices_match.shape[1]):

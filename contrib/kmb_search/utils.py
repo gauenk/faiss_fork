@@ -17,13 +17,14 @@ from bp_search import create_mesh_from_ranges
 from warp_utils import warp_burst_from_locs,warp_burst_from_pix
 th_pad = torchvision.transforms.functional.pad
 
-
-def parse_ctype(ctype,noisy,clean):
-    cimg = None
-    if ctype == "clean": cimg = clean
-    elif ctype == "noisy": cimg = noisy
-    else: raise ValueError(f"unknown [centroid type] param [{ctype}]")
-    return cimg
+def get_ref_centroids(clusters,centroids,inds,ref=None):
+    t = clusters.shape[0]
+    c,tK,s,h,w,ps,ps = centroids.shape
+    if ref is None: ref = t//2
+    inds = clusters[ref].type(torch.long)
+    inds = repeat(inds,'s h w -> c 1 s h w p1 p2',c=c,p1=ps,p2=ps)
+    ref_centroids = centroids.gather(dim=1,index=inds)[:,0]
+    return ref_centroids
 
 def get_optional_field(pydict,field,default):
     if pydict is None: return default
