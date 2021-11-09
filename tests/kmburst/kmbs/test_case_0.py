@@ -26,6 +26,21 @@ def vprint(*args,**kwargs):
 
 def divUp(a,b): return (a-1)//b+1
 
+"""
+  dbscan eps parameters:
+
+    @std = 100/255.
+    eps = 1.5 gives l2
+    eps = 2.0 gives worse
+
+    @std = 50/255.
+    eps = 1.5 gives worse
+    eps = 1.0 gives worse
+    eps = 0.75 gives ?
+    eps = 0.5 gives l2
+
+"""
+
 
 @pytest.mark.kmbs
 @pytest.mark.kmbs_case0
@@ -34,8 +49,8 @@ def test_case_0():
     # -- params --
     k = 1
     t = 10
-    h = 16
-    w = 16
+    h = 9
+    w = 9
     c = 3
     ps = 3
     nframes = t
@@ -45,7 +60,7 @@ def test_case_0():
     nfsearch = 3 # num of frames searched (per iter)
     nbsearch = nsearch_xy**2 # num blocks searched (per frame)
     nblocks = nbsearch**(kmeansK-1)
-    std = 100.
+    std = 50.
     device = 'cuda:0'
     seed = 234
     verbose = False
@@ -173,28 +188,20 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
 
     # -- exec kmeans-burst search --
 
-    testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":3,
-               "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
-               "sup_km_version":"v2"}
-    output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb_v9,inds.kmb_v9,times.kmb_v9 = output
-    desc.kmb_v9 = "Supervised clustering with a clustered noisy reference.\n"
-    desc.kmb_v9 += "This is the known clusters + averaged noisy reference"
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":3,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v9,inds.kmb_v9,times.kmb_v9 = output
+    # desc.kmb_v9 = "Supervised clustering with a clustered noisy reference.\n"
+    # desc.kmb_v9 += "This is the known clusters + averaged noisy reference"
 
-    testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":3,
-               "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
-               "sup_km_version":"v2"}
-    output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb_v13,inds.kmb_v13,times.kmb_v13 = output
-    desc.kmb_v13 = "Supervised clustering with a clean+noise reference.\n"
-
-    testing = {"ave":"ref_centroids","ave_centroid_type":"clean-v1","nfsearch":3,
-               "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
-               "sup_km_version":"v2"}
-    output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
-    vals.kmb_v14,inds.kmb_v14,times.kmb_v14 = output
-    desc.kmb_v14 = "Supervised clustering with a clean+noise reference.\n"
-
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":3,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v13,inds.kmb_v13,times.kmb_v13 = output
+    # desc.kmb_v13 = "Supervised clustering with a clean+noise reference.\n"
 
     # # -- exec kmeans-burst search --
     # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":4,
@@ -212,13 +219,33 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
     # vals.kmb_v11,inds.kmb_v11,times.kmb_v11 = output
     # desc.kmb_v11 = "Same as v9 but use the output from the l2 as the search grid."
 
-    # -- exec kmeans-burst search --
     # testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":4,
     #            "cluster":"kmeans","cluster_centroid_type":"noisy",
     #            "sup_km_version":"v2","sranges_type":"zero"}
     # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     # vals.kmb_v12,inds.kmb_v12,times.kmb_v12 = output
     # desc.kmb_v12 = "Same as v9 but using actual kmeans"
+
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"clean-v1","nfsearch":3,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v14,inds.kmb_v14,times.kmb_v14 = output
+    # desc.kmb_v14 = "Supervised clustering with a clean+noise reference.\n"
+
+    # testing = {"ave":"ref_centroids","ave_centroid_type":"noisy","nfsearch":3,
+    #            "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    #            "sup_km_version":"v2"}
+    # output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    # vals.kmb_v15,inds.kmb_v15,times.kmb_v15 = output
+    # desc.kmb_v15 = "Supervised clustering with a noise reference.\n"
+
+    testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":3,
+               "cluster":"dbscan_scikit","cluster_centroid_type":"noisy",
+               "sranges_type":"l2"}
+    output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
+    vals.kmb_v16,inds.kmb_v16,times.kmb_v16 = output
+    desc.kmb_v16 = "DBSCAN clustering with the given centroid reference.\n"
 
     # -- print report --
     msg = "TODO"
@@ -326,11 +353,26 @@ def print_report(vals,inds,times,noisy,clean,patchsize):
         t,ps = clean.shape[1],patchsize
         repimg = repeat(clean[:,t//2],'c h w -> t c h w',t=t)
         for method in methods:
+            print_method = method_rename(method)
             m_inds = inds[method]
             warp = warp_burst_from_pix(clean,m_inds[:,:,None])
             warp = rearrange(warp,'1 c t h w -> t c h w')
             psnrs = images_to_psnrs_crop(warp,repimg,2*divUp(ps,2))
-            print(f"-- [{method}] --")
+            print(f"-- [{print_method}] --")
             print(psnrs)
             save_image(f"tkmb_{method}.png",warp)
     
+
+def method_rename(method):
+    if method == "kmb_v9":
+        return "Ref Centroid"
+    elif method == "kmb_v13":
+        return "Ref Clean"
+    elif method == "kmb_v14":
+        return "Ref Clean + Noise"
+    elif method == "kmb_v15":
+        return "Ref Noisy"
+    else:
+        return method
+
+        

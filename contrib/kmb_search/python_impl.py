@@ -126,8 +126,8 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
 
     for s_iter in tqdm.tqdm(range(nsiters)):#nsiters
 
-        if s_iter == 0: VERBOSE = True
-        else: VERBOSE = False
+        # if s_iter == 0: VERBOSE = True
+        # else: VERBOSE = False
         vprint("-"*30)
         vprint("-"*30)
         vprint(f"Iteration: {s_iter}")
