@@ -20,7 +20,7 @@ def get_centroids_for_ave(ctype,noisy,clean,indices,ps):
     pimg = parse_ctype(ctype,noisy,clean)
     clusters,sizes = init_clusters(nframes,nframes,nsearch,h,w,device)
     centroids = update_ecentroids(pimg,indices,clusters,sizes,ps)
-    if "clean" in ctype:# and "-" in ctype:
+    if "clean" in ctype and "-" in ctype:
         centroids = torch.normal(centroids,std=100./(255.*5))
         # ntype = ctype.split("-")[1]
         # centroids = ref_noise(ntype,centroids)

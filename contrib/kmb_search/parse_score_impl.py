@@ -24,7 +24,7 @@ def get_filter_values(ave_ctype):
 
     def filter_ave_clean(l2_vals,clusters,ref):
         # -- remove if ave is clean --
-        if "clean" in ave_ctype:
+        if "clean" in ave_ctype:# and "-" not in ave_ctype:
             fill_ref_l2vals(0.,clusters,l2_vals,ref)
             return l2_vals
         else: return l2_vals
@@ -63,9 +63,9 @@ def get_weighted_ave_v1(filter_fxn):
     def weighted_ave_v1(l2_vals,modes,clusters,sizes,nframes,ref):
         l2_vals,sizes = filter_fxn(l2_vals,clusters,sizes,ref)
         scores = torch.nansum(torch.abs(l2_vals-modes)*sizes,dim=0)
-        sizes = torch.sum(sizes,dim=0)
-        scores = scores/sizes
-        # scores = scores/nframes
+        # sizes = torch.sum(sizes,dim=0)
+        # scores = scores/sizes
+        scores = scores/nframes
         return scores
     return weighted_ave_v1
 

@@ -181,21 +181,19 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
     desc.kmb_v9 = "Supervised clustering with a clustered noisy reference.\n"
     desc.kmb_v9 += "This is the known clusters + averaged noisy reference"
 
-    testing = {"ave":"ref_centroids","ave_centroid_type":"clean",
-               "nfsearch":3,"cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    testing = {"ave":"ref_centroids","ave_centroid_type":"clean","nfsearch":3,
+               "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
                "sup_km_version":"v2"}
     output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     vals.kmb_v13,inds.kmb_v13,times.kmb_v13 = output
     desc.kmb_v13 = "Supervised clustering with a clean+noise reference.\n"
-    desc.kmb_v13 += "This should be the best of all the clustering methods."
 
-    testing = {"ave":"ref_centroids","ave_centroid_type":"clean-v1",
-               "nfsearch":3,"cluster":"sup_kmeans","cluster_centroid_type":"noisy",
+    testing = {"ave":"ref_centroids","ave_centroid_type":"clean-v1","nfsearch":3,
+               "cluster":"sup_kmeans","cluster_centroid_type":"noisy",
                "sup_km_version":"v2"}
     output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
     vals.kmb_v14,inds.kmb_v14,times.kmb_v14 = output
     desc.kmb_v14 = "Supervised clustering with a clean+noise reference.\n"
-    desc.kmb_v14 += "This should be the best of all the clustering methods."
 
 
     # # -- exec kmeans-burst search --

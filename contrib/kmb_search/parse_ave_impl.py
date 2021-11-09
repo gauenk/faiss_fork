@@ -32,9 +32,9 @@ def get_ref_centroids_fxn(ctype):
         c,tK,s,h,w,ps,ps = centroids.shape
         tK,s,h,w = sizes.shape
 
-        # # -- set zero locations to nan --
-        # aug_sizes = repeat(sizes,'t s h w -> c t s h w p1 p2',c=c,p1=ps,p2=ps)
-        # centroids[torch.where(aug_sizes==0)]=float("nan")
+        # -- set zero locations to nan --
+        aug_sizes = repeat(sizes,'t s h w -> c t s h w p1 p2',c=c,p1=ps,p2=ps)
+        centroids[torch.where(aug_sizes==0)]=float("nan")
 
         # -- create ref centroid --
         ref_centroids = get_ref_centroids(clusters,centroids,indices,ref=None)
