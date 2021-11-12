@@ -30,11 +30,13 @@ def run_dbscan_scikit(burst,indices,K,ps,km_offset,eps,minPts):
     device = burst.device
     c,t,h,w = burst.shape
     two,t,s,h,w = indices.shape
+    cluster_ps = 11
 
     # -- create centroids for each frame --
     clusters,sizes = init_clusters(t,t,s,h,w,device)
-    eburst = update_ecentroids(burst,indices,clusters,sizes,ps)
+    eburst = update_ecentroids(burst,indices,clusters,sizes,cluster_ps)
     eburst = eburst.cpu().numpy()
+    sizes = torch.zeros_like(sizes)
 
     # -- run dbscan for each prop --
     for si in range(s):
@@ -54,6 +56,7 @@ def run_dbscan_scikit(burst,indices,K,ps,km_offset,eps,minPts):
                 # -- format output --
                 cids = sk_dbscan.labels_
                 cids = torch.IntTensor(cids).to(device)
+                # print("c",cids)
 
                 # -- remove -1 indices --
                 max_cid = cids.max().item()+1
@@ -61,10 +64,12 @@ def run_dbscan_scikit(burst,indices,K,ps,km_offset,eps,minPts):
                     if cid == -1:
                         cids[c] = max_cid
                         max_cid += 1
+                # print("b",cids)
                         
                 # -- update --
                 clusters[:,si,hi,wi] = cids
                 sizes[cids.type(torch.long),si,hi,wi] += 1
+                # print(sizes[:,si,hi,wi])
 
     # -- to device --
     centroids = update_ecentroids(burst,indices,clusters,sizes,ps)

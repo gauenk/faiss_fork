@@ -74,7 +74,7 @@ def run_kmb_python(res, noisy, patchsize, nsearch, k,
     if nsiters is None: nsiters = divUp(t,nfsearch)
     clean,indices_gt = get_gt_info(gt_info)
     nfsearch = get_optional_field(testing,"nfsearch",3)
-    nsiters = 5*(t-nfsearch+1)#1*divUp(t,nfsearch)
+    nsiters = 3*(t-nfsearch+1)#1*divUp(t,nfsearch)
     nsiters = get_optional_field(testing,"nsiters",nsiters)
     VERBOSE = get_optional_field(testing,"verbose",VERBOSE)
     nframes = t

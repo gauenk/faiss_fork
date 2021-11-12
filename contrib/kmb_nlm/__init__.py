@@ -1,1 +1,1 @@
-from .impl import runKmbNlm
+from .impl import run_nlm

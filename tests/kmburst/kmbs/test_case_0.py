@@ -29,16 +29,32 @@ def divUp(a,b): return (a-1)//b+1
 """
   dbscan eps parameters:
 
-    @std = 100/255.
-    eps = 1.5 gives l2
-    eps = 2.0 gives worse
+    @std = 100/255., nframes = 10
+                    : [size init @ 1]
+    eps = 1.5 gives : l2
+    eps = 2.0 gives : worse
 
-    @std = 50/255.
-    eps = 1.5 gives worse
-    eps = 1.0 gives worse
-    eps = 0.75 gives ?
-    eps = 0.5 gives l2
+    @std = 50/255., nframes = 10
+                    : [size init @ 1] -- [size init @ 0]
+    eps = 1.5 gives : worse --
+    eps = 1.0 gives : worse -- slightly worse (worse & better)
+    eps = 0.925 gives : ? -- slightly worse (worse & better)
+    eps = 0.85 gives : ? -- better (on two frames: 0.45 and 0.14)
+    eps = 0.85 gives : l2 -- l2
+    eps = 0.75 gives : l2 --
+    eps = 0.5 gives : l2 --
+    eps = 0.1 gives : ? -- l2
 
+    @std = 25/255., nframes = 10
+                    : [size init @ 0]
+    eps = 0.5    gives : worse
+    eps = 0.75   gives : l2
+    eps = 0.90   gives : l2
+    eps = 1.5    gives : l2
+    eps = 2.0    gives : l2
+    eps = 10.0   gives : l2
+    eps = 50.0   gives : l2
+    eps = 150.0  gives : l2
 """
 
 
@@ -60,7 +76,7 @@ def test_case_0():
     nfsearch = 3 # num of frames searched (per iter)
     nbsearch = nsearch_xy**2 # num blocks searched (per frame)
     nblocks = nbsearch**(kmeansK-1)
-    std = 50.
+    std = 20.
     device = 'cuda:0'
     seed = 234
     verbose = False
@@ -240,7 +256,7 @@ def exec_search_test(k,t,h,w,c,ps,nblocks,nsearch_xy,
     # vals.kmb_v15,inds.kmb_v15,times.kmb_v15 = output
     # desc.kmb_v15 = "Supervised clustering with a noise reference.\n"
 
-    testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":3,
+    testing = {"ave":"ref_centroids","ave_centroid_type":"given","nfsearch":4,
                "cluster":"dbscan_scikit","cluster_centroid_type":"noisy",
                "sranges_type":"l2"}
     output = run_kmb_search(noisy,clean,ps,nsearch_xy,std,vals,inds,times,testing)
